@@ -2,9 +2,10 @@
 ; NXTMAIL - mailer for ZX Spectrum Next
 ;   uses Next Mailbox Protocol 0.1
 
-                        zeusemulate "48K"               ;
-                        ;  zeusemulate "Next", "RAW"       ; RAW prevents Zeus from adding some BASIC emulator-friendly;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                        ;   zeusemulate "48K"               ;
+                        zeusemulate "Next", "RAW"       ; RAW prevents Zeus from adding some BASIC emulator-friendly;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 zoLogicOperatorsHighPri = false                         ; data like the stack and system variables. Not needed because
+zoSupportStringEscapes  = true                          ;
 zxAllowFloatingLabels   = false                         ; this only runs on the Next, and everything is already present.
 
 ; NextZXOS APIs
@@ -22,31 +23,45 @@ CPU_28                  equ 11b                         ; 11b = 28MHz
 
 org                     $8000                           ; This should keep our code clear of NextBASIC sysvars
                         ;                                 (Necessary for making NextZXOS API calls);
+;
+; main loop
+;
 Main                    proc                            ;
                         di                              ;
-;                        nextreg NXREG_TURBO_CTL, CPU_28 ; Next Turbo Control Register $07: 11b is 28MHz
-                        Border(7)                       ; 7=white
+                        nextreg NXREG_TURBO_CTL, CPU_28 ; Next Turbo Control Register $07: 11b is 28MHz
+                        call SetupScreen                ;
+                        call DisplayMenu                ;                        ei                              ;
+                        call HandleMenuChoice           ;
+pend
+
+;
+; end of main
+;
+
+SetupScreen             Border(7)                       ; 7=white
                         OpenOutputChannel(2)            ; ROM: Open channel to upper screen (channel 2)
-
-; SetLayer1_1             ld a, 1                         ; set layer via IDE_MODE using M_P3DOS (needs bank 7)
-;                        ld b, 1                         ; if A=1, change mode to:
-;                        ld c, 1                         ;   B=layer (0,1,2)
-;                        M_P3DOS(IDE_MODE,7)             ;   C=sub-mode (if B=1): 0=lo-res, 1=ula, 2=hi-res, 3=hi-col                                                        ;
-
+SetLayer1_1             ld a, 1                         ; set layer via IDE_MODE using M_P3DOS (needs bank 7)
+                        ld b, 1                         ; if A=1, change mode to:
+                        ld c, 1                         ;   B=layer (0,1,2)
+                        M_P3DOS(IDE_MODE,7)             ;   C=sub-mode (if B=1): 0=lo-res, 1=ula, 2=hi-res, 3=hi-col                                                        ;
 ClearScreen             ld a,14                         ; 'clear window control code' (for layers 1+) (see IDE_MODE docs)
                         rst $10                         ;  ROM print a char
-
-                        ei                              ; reenable for ROM keyscan?
 SetFontWidth            PrintChar(30)                   ; set char width in pixels
                         PrintChar(5)                    ; to 5 (51 chars wide)
+                        ret                             ;
 
-                        PrintLine(0,0,MENU_LINE_1,20)   ;
+
+DisplayMenu             PrintLine(0,0,MENU_LINE_1,20)   ;
                         PrintLine(0,1,MENU_LINE_2,20)   ;
                         PrintLine(0,2,MENU_LINE_3,20)   ;
+                        ret                             ;
 
-CheckMenuChoice         call ROM_KEY_SCAN               ;
+
+HandleMenuChoice        ei                              ;
+                        call ROM_KEY_SCAN               ;
+                        di                              ;
                         inc d                           ;
-                        jp nz,CheckMenuChoice           ; ignore 2 keypresses
+                        jp nz,HandleMenuChoice          ; ignore 2 keypresses
                         ld a,e                          ; a: = key code of key pressed (ff if none).
                         cp $24                          ; check for 1 key
                         jp z,HandleRegister             ;
@@ -54,15 +69,120 @@ CheckMenuChoice         call ROM_KEY_SCAN               ;
                         jp z,HandleSend                 ;
                         cp $14                          ; check for 3 key
                         jp z, HandleList                ;
-
-EndLoop                 jp CheckMenuChoice              ;
-                        pend                            ;
+EndLoop                 jp HandleMenuChoice             ;
 
 HandleRegister          PrintLine(0,4,REG_PROMPT, 26)   ;
                         PrintLine(0,5,PROMPT, 2)        ;
                         call HandleUuidInput            ;
                         PrintLine(0,8,OK, 2)            ;
-                        jp Main.CheckMenuChoice         ;
+                        call RegisterUuid               ;
+                        PrintLine(0,8,OK, 2)            ;
+                        jp HandleMenuChoice             ;
+                        ret                             ;
+
+RegisterUuid:           PrintLine(2,12,OK,2)            ;
+
+MakeCIPStart:           
+                        ld de, Buffer                   ;
+                        WriteString(Cmd.CIPSTART1, Cmd.CIPSTART1Len);
+                        WriteString(MboxHost, MboxHostLen) ;
+                        WriteString(Cmd.CIPSTART2, Cmd.CIPSTART2Len);
+                        WriteString(MboxPort, MboxPortLen) ;
+                        WriteString(Cmd.Terminate, Cmd.TerminateLen);
+
+InitialiseESP:          
+                        PrintLine(0,13, Buffer, 51)     ;
+                        PrintLine(0,14,Msg.InitESP,20)  ; "Initialising WiFi..."
+                        ; jp InitialiseESP                ;
+;                        PrintLine(5,12,OK,2)            ;
+; Fep                     halt                            ;
+;                        jp Fep                          ;
+
+                        PrintAt(0,15)                   ;
+                        PrintMsg(Msg.SetBaud1)          ; "Using 115200 baud, "
+                        NextRegRead(Reg.VideoTiming)    ;
+                        and %111                        ;
+                        push af                         ;
+                        ld d, a                         ;
+                        ld e, 5                         ;
+                        mul                             ;
+                        ex de, hl                       ;
+                        add hl, Timings.Table           ;
+                        call PrintRst16                 ; "VGA0/../VGA6/HDMI"
+                        PrintMsg(Msg.SetBaud2)          ; " timings"
+                        pop af                          ;
+                        add a,a                         ;
+                        ld hl, Baud.Table               ;
+                        add hl, a                       ;
+                        ld e, (hl)                      ;
+                        inc hl                          ;
+                        ld d, (hl)                      ;
+                        ex de, hl                       ; HL now contains the prescalar baud value
+                        ld (Prescaler), hl              ;
+                        ld a, %x0x1 x000                ; Choose ESP UART, and set most significant bits
+                        ld (Prescaler+2), a             ; of the 17-bit prescalar baud to zero,
+                        ld bc, UART_Sel                 ; by writing to port 0x143B.
+                        out (c), a                      ;
+                        dec b                           ; Set baud by writing twice to port 0x143B
+                        out (c), l                      ; Doesn't matter which order they are written,
+                        out (c), h                      ; because bit 7 ensures that it is interpreted correctly.
+                        inc b                           ; Write to UART control port 0x153B
+
+                        /*ld a, (Prescaler+2)             ; Print three bytes written for debug purposes
+                        call PrintAHexNoSpace
+                        ld a, (Prescaler+1)
+                        call PrintAHexNoSpace
+                        ld a, (Prescaler)
+                        call PrintAHexNoSpace
+                        ld a, CR
+                        rst 16*/                        ;
+
+                        ESPSend("ATE0")                 ; * Until we have absolute frame-based timeouts, send first AT
+                        call ESPReceiveWaitOK           ; * cmd twice to give it longer to respond to one of them.
+                        ESPSend("ATE0")                 ;
+                        ErrorIfCarry(Err.ESPComms1)     ; Raise ESP error if no response
+                        call ESPReceiveWaitOK           ;
+                        ErrorIfCarry(Err.ESPComms2)     ; Raise ESP error if no response
+                        ; * However... the UART buffer probably needs flushing here now!
+                        ESPSend("AT+CIPCLOSE")          ; Don't raise error on CIPCLOSE
+                        call ESPReceiveWaitOK           ; Because it might not be open
+                        //ErrorIfCarry(Err.ESPComms)    ; We never normally want to raise an error after CLOSE
+                        ESPSend("AT+CIPMUX=0")          ;
+                        ErrorIfCarry(Err.ESPComms3)     ; Raise ESP error if no response
+                        call ESPReceiveWaitOK           ;
+                        ErrorIfCarry(Err.ESPComms4)     ; Raise ESP error if no response
+Connect:                
+                        PrintMsg(Msg.Connect1)          ;
+                        ; Print(MboxHost, MboxHost) ;
+                        PrintMsg(Msg.Connect2)          ;
+                        ESPSendBuffer(Buffer)           ; This is AT+CIPSTART="TCP","<server>",<port>\r\n
+                        ErrorIfCarry(Err.ESPConn1)      ; Raise ESP error if no connection
+                        call ESPReceiveWaitOK           ;
+                        ErrorIfCarry(Err.ESPConn2)      ; Raise ESP error if no response
+                        PrintMsg(Msg.Connected)         ;
+
+MakeCIPSend:            
+                        ld de, MsgBuffer                ;
+                        WriteString(Cmd.CIPSEND, Cmd.CIPSENDLen);
+                        WriteString(WordStart, WordLen) ;
+                        WriteString(Cmd.Terminate, Cmd.TerminateLen);
+
+                        PrintLine(0,17, MsgBuffer, 51)
+
+                        ld de, Buffer                   ;
+                        WriteString(RequestMsg, RequestMsgLen);
+                        WriteString(Cmd.Terminate, Cmd.TerminateLen);
+
+SendRequest:            
+                        ESPSendBuffer(MsgBuffer)        ;
+                        call ESPReceiveWaitOK           ;
+                        ErrorIfCarry(Err.ESPComms5)     ; Raise wifi error if no response
+                        call ESPReceiveWaitPrompt       ;
+                        ErrorIfCarry(Err.ESPComms6)     ; Raise wifi error if no prompt
+                        ESPSendBufferLen(Buffer, RequestLen);
+                        ErrorIfCarry(Err.ESPConn3)      ; Raise connection error
+
+
 
 ; TODO allow exit with BREAK
 HandleUuidInput         ld b, 36                        ; collect 36 chars for uuid
@@ -128,11 +248,11 @@ NoKeyPressed            cp c                            ; is current keycode sam
 
 HandleSend              PrintAt(0,4)                    ;
                         PrintChar(50)                   ;
-                        jp Main.CheckMenuChoice         ;
+                        jp HandleMenuChoice             ;
 
 HandleList              PrintAt(0,4)                    ;
                         PrintChar(51)                   ;
-                        jp Main.CheckMenuChoice         ;
+                        jp HandleMenuChoice             ;
 
 
 MENU_LINE_1             defb "1. Register uuid    "     ;
@@ -145,25 +265,49 @@ OK                      defb "OK"                       ;
 INBUF                   defs 128, ' '                   ; our input buffer
 BUFLEN                  defs 1                          ;
 
+MboxHost:               defb "nextmailbox.spectrum.cl"  ;
+MboxHostLen:            equ $-MboxHost                  ;
+MboxPort:               defb "8361"                     ;
+MboxPortLen:            equ $-MboxPort                  ;
+RequestLen:             equ RequestVal                        ;
+WordStart:              defb "6"                     ;
+WordLen:                equ 1                 ;
+ResponseStart:          dw $0000                        ;
+ResponseLen:            dw $0000                        ;
+Prescaler:              ds 3                            ;
+Buffer:                 ds 256                          ;
+BufferLen               equ $-Buffer                    ;
+MsgBuffer:              ds 256                          ;
+MsgBufferLen            equ $-MsgBuffer                 ;
+RequestVal              defb 6
+RequestMsg              defb "hiya"
+RequestMsgLen           equ $-RequestMsg
+
 PrintLine               macro(X, Y, string, len)        ;
                           push de                       ;
                           push bc                       ;
                           PrintAt(X,Y)                  ;
                           ld de, string                 ; address of string
                           ld bc, len                    ; length of string to print
+                          ei                            ;
                           call ROM_PR_STRING            ;
+                          di                            ;
                           pop bc                        ;
                           pop de                        ;
                           mend                          ;
 
 OpenOutputChannel       macro(Channel)                  ; Semantic macro to call a 48K ROM routine
                           ld a, Channel                 ; 2 = upper screen
+                          ei                            ;
                           call ROM_CHAN_OPEN            ;
+                          di                            ;
                           mend                          ;
 
 PrintChar               macro(Char)                     ; Semantic macro to call a 48K ROM routine
+                          ei                            ;
                           ld a, Char                    ;
                           rst $10                       ; ROM 0010: THE 'PRINT A CHARACTER' RESTART
+                          di                            ;
                           mend                          ;
 
 PrintAt                 macro(X, Y)                     ; Semantic macro to call a 48K ROM routine
@@ -205,13 +349,18 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver<=76, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
 
 ; Generate a NEX file                                   ; Instruct the .NEX loader to write the file handle to this
-                        output_z80 "NxtMail.z80",$FF40, Main ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;                        output_nex "NxtMail.nex", $FF40, Main ; Generate the file, with SP argument followed PC;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                        ;        output_z80 "NxtMail.z80",$FF40, Main ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                        output_nex "NxtMail.nex", $FF40, Main ; Generate the file, with SP argument followed PC;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                         ; Zeus "just knows" which 16K banks to include in the .NEX file,
                         ; making generation a one-liner if you don't want loading screens
                         ; or external palette files. See History/Documentation in Zeus
