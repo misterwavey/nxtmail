@@ -1,0 +1,83 @@
+nxtmbox protocol 0.1
+
+request:
+
+pos:   | 0        |  2   |  3   |   4    | 25       | 46      |
+size:  | 2        |  1   |  1   |  20    | 20       | 255     |
+field: | protocol | cmd  |  app | userid | nickname | message |
+
+cmds
+
+1. register user for app
+ 
+response:
+
+pos:   | 0      | 1        |
+size:  | 1      | 20       |
+field: | status | nickname |
+
+status:
+0: unsupported protocol version
+1: OK
+2: unknown app
+3: user already registered    
+
+2. check nickname registered for app
+
+response:
+
+pos:   | 0      | 
+size:  | 1      | 
+field: | status | 
+
+status 
+0: unsupported protocol version
+1: OK
+2: unknown app
+3: unregistered userId
+4: unregistered nickname
+
+3. get message count
+
+response:
+
+pos:   | 0      | 1            | 
+size:  | 1      | 2            | 
+field: | status | messageCount |
+
+status 
+0: unsupported protocol version
+1: OK
+2: unknown app
+3: unregistered userId
+
+4. getMessage
+
+response:
+
+pos:   | 0      | 1          | 2       |
+size:  | 1      | 1          | n       |
+field: | status | messagelen | message |
+
+status 
+0: unsupported protocol version
+1: OK
+2: unknown app
+3: unreigstered userId
+
+5. sendMessage
+
+response:
+
+pos:   | 0      | 
+size:  | 1      | 
+field: | status | 
+
+status 
+0: unsupported protocol version
+1: OK
+2: unknown app
+3: unregistered userId
+4: unknown nickname
+
+
