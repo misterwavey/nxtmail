@@ -1,0 +1,96 @@
+nxtmbox protocol 0.1
+
+response STATUS:
+
+STATUS_OK                      = 0
+STATUS_INVALID_PROTOCOL        = 1
+STATUS_INVALID_CMD             = 2
+STATUS_INVALID_APP             = 3
+STATUS_INVALID_USERID          = 4
+STATUS_INVALID_LENGTH          = 5
+STATUS_INTERNAL_ERROR          = 6
+STATUS_MISSING_NICKNAME        = 7
+STATUS_MISSING_MESSAGE         = 8
+STATUS_UNIMPLEMENTED           = 9
+STATUS_MISSING_MESSAGE_ID      = 10
+
+STATUS_USER_ALREADY_REGISTERED = 101
+STATUS_UNREGISTERED_NICKNAME   = 102
+STATUS_UNKNOWN_USERID          = 103
+STATUS_UNREGISTERED_USERID     = 104
+
+STATUS_REGISTER_OK             = 201
+STATUS_COUNT_OK                = 202
+STATUS_GET_MESSAGE_OK          = 203
+STATUS_INVALID_MESSAGE_ID      = 204
+
+request:
+protocol maj=0 min=1
+26 chars is min len of valid request
+
+pos:   |  0        | 2    |  3   |  4     | 25         | 46      |
+size:  |  2        | 1    |  1   |  20    | 20         | 255     |
+field: |  protocol | cmd  |  app | userid | param1:    | message |
+       |           |      |      |        | nickname/* |         |
+       |           |      |      |        | or msgid   |         |
+
+cmds
+
+1. register user for app
+ 
+response:
+
+pos:       |  0      | 1              |
+size:      |  1      | 20             |
+field:     | status  | nickname       |
+condition: |         | status=101/201 |
+
+2. check nickname registered for app
+
+response:
+
+pos:   | 0      |
+size:  | 1      |
+field: | status |
+
+
+3. get message count
+
+response:
+
+pos:      | 0      | 1            |
+size:     | 1      | 1            |
+field:    | status | messageCount |
+condition |        | status=202   |
+
+
+4. getMessage
+
+response:
+
+pos:      | 0      | 1          | 2          |
+size:     | 1      | 1          | n          |
+field:    | status | messagelen | message    |
+condition |        | status=203 | status=203 |
+
+5. sendMessage
+
+response:
+
+pos:   | 0      |
+size:  | 1      |
+field: | status |
+
+
+experimental below here
+
+
+6. get (up to 10) random app users
+
+response:
+
+pos:      | 0      | 1     | 21    | 41    | ... |
+size:     | 1      | 1     | 20    | 20    | ... |
+field:    | status | count | nick1 | nick2 | ... |
+condition |        |        status=204           |
+
