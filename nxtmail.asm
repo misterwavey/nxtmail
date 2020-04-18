@@ -60,8 +60,8 @@ DisplayMenu             PrintLine(0,0,MENU_LINE_1,20)   ;
 HandleMenuChoice        ei                              ;
                         call ROM_KEY_SCAN               ;
                         di                              ;
-                        inc d                           ;
-                        jp nz,HandleMenuChoice          ; ignore 2 keypresses
+                        inc d                           ; no shiftkey = ff
+                        jp nz,HandleMenuChoice          ; ignore shifted key combos
                         ld a,e                          ; a: = key code of key pressed (ff if none).
                         cp $24                          ; check for 1 key
                         jp z,HandleRegister             ;
@@ -73,14 +73,14 @@ EndLoop                 jp HandleMenuChoice             ;
 
 HandleRegister          PrintLine(0,4,REG_PROMPT, 26)   ;
                         PrintLine(0,5,PROMPT, 2)        ;
-                        call HandleUuidInput            ;
+                        call HandleUserIdInput          ;
                         PrintLine(0,8,OK, 2)            ;
-                        call RegisterUuid               ;
+                        call RegisterUserId             ;
                         PrintLine(0,8,OK, 2)            ;
                         jp HandleMenuChoice             ;
                         ret                             ;
 
-RegisterUuid:           PrintLine(2,12,OK,2)            ;
+RegisterUserId:         PrintLine(2,12,OK,2)            ;
 
 MakeCIPStart:           
                         ld de, Buffer                   ;
@@ -167,7 +167,7 @@ MakeCIPSend:
                         WriteString(WordStart, WordLen) ;
                         WriteString(Cmd.Terminate, Cmd.TerminateLen);
 
-                        PrintLine(0,17, MsgBuffer, 51)
+                        PrintLine(0,17, MsgBuffer, 51)  ;
 
                         ld de, Buffer                   ;
                         WriteString(RequestMsg, RequestMsgLen);
@@ -185,7 +185,7 @@ SendRequest:
 
 
 ; TODO allow exit with BREAK
-HandleUuidInput         ld b, 36                        ; collect 36 chars for uuid
+HandleUserIdInput       ld b, 20                        ; collect 20 chars for userId
                         ld c,0                          ; used to debounce
                         ld hl, INBUF                    ; which buffer to store chars
 InputLoop               PrintLine(3,5,INBUF, 36)        ; show current buffer contents   TODO restore to 51
@@ -204,10 +204,15 @@ ShiftCheck              cp $27                          ; $27=CS - check if caps
                         ld a,e                          ; yes. check 2nd char
                         cp $23                          ; $23=0 - is 2nd char 0 key? (CS + 0 = delete)
                         jp nz, InputLoop                ; no. collect another char
-Delete                  ld a,b                          ; yes. let's see if we've got any chars to delete
+                        push af                         ; yes
+Delete                  ld a,b                          ; let's see if we've got any chars to delete
                         cp 0                            ;
                         jp z, InputLoop                 ; no. collect another char
-                        ld (hl), ' '                    ; yes . blank current char
+                        pop af                          ; yes
+                        cp c                            ; is this key same as last keypress?
+                        jp z, InputLoop                 ; yes. = debounce
+                        ld c, a                         ; no. store key for next debounce check
+                        ld (hl), ' '                    ; blank current char
                         dec hl                          ; and reposition buffer pointer
                         inc b                           ; and collected char count
                         jp InputLoop                    ; collect another char
@@ -255,7 +260,7 @@ HandleList              PrintAt(0,4)                    ;
                         jp HandleMenuChoice             ;
 
 
-MENU_LINE_1             defb "1. Register uuid    "     ;
+MENU_LINE_1             defb "1. Register userId  "     ;
 MENU_LINE_2             defb "2. Send message     "     ;
 MENU_LINE_3             defb "3. List messages    "     ;
 REG_PROMPT              defb "Enter your Next Mailbox Id";
@@ -269,9 +274,9 @@ MboxHost:               defb "nextmailbox.spectrum.cl"  ;
 MboxHostLen:            equ $-MboxHost                  ;
 MboxPort:               defb "8361"                     ;
 MboxPortLen:            equ $-MboxPort                  ;
-RequestLen:             equ RequestVal                        ;
-WordStart:              defb "6"                     ;
-WordLen:                equ 1                 ;
+RequestLen:             equ RequestVal                  ;
+WordStart:              defb "6"                        ;
+WordLen:                equ 1                           ;
 ResponseStart:          dw $0000                        ;
 ResponseLen:            dw $0000                        ;
 Prescaler:              ds 3                            ;
@@ -279,9 +284,9 @@ Buffer:                 ds 256                          ;
 BufferLen               equ $-Buffer                    ;
 MsgBuffer:              ds 256                          ;
 MsgBufferLen            equ $-MsgBuffer                 ;
-RequestVal              defb 6
-RequestMsg              defb "hiya"
-RequestMsgLen           equ $-RequestMsg
+RequestVal              defb 6                          ;
+RequestMsg              defb "hiya"                     ;
+RequestMsgLen           equ $-RequestMsg                ;
 
 PrintLine               macro(X, Y, string, len)        ;
                           push de                       ;
@@ -349,11 +354,11 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver<=76, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
