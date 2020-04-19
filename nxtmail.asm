@@ -21,6 +21,37 @@ ROM_PR_STRING           equ $203c                       ;
 NXREG_TURBO_CTL         equ $07                         ; set CPU speed
 CPU_28                  equ 11b                         ; 11b = 28MHz
 
+; Next Mailbox Protocol
+MBOX_STATUS_OK          equ 0                           ;
+MBOX_STATUS_INV_PROTO   equ 1                           ;
+MBOX_STATUS_INV_CMD     equ 2                           ;
+MBOX_STATUS_INV_APP     equ 3                           ;
+MBOX_STATUS_INV_USERID  equ 4                           ;
+MBOX_STATUS_INV_LENGTH  equ 5                           ;
+MBOX_STATUS_INT_ERR     equ 6                           ;
+MBOX_STATUS_MISS_NICK   equ 7                           ;
+MBOX_STATUS_MISS_MSG    equ 8                           ;
+MBOX_STATUS_UNIMPL      equ 9                           ;
+MBOX_STATUS_MISS_MSG_ID equ 10                          ;
+
+MBOX_STATUS_USR_ALR_REG equ 101                         ;
+MBOX_STATUS_UNREG_NICK  equ 102                         ;
+MBOX_STATUS_UNK_USERID  equ 103                         ;
+MBOX_STATUS_UNREG_USER  equ 104                         ;
+
+MBOX_STATUS_REGISTER_OK equ 201                         ;
+MBOX_STATUS_COUNT_OK    equ 202                         ;
+MBOX_STATUS_GET_MSG_OK  equ 203                         ;
+MBOX_STATUS_INV_MSG_ID  equ 204                         ;
+
+MBOX_CMD_REGISTER       equ 1                           ;
+MBOX_CMD_CHECK_REG_NICK equ 2                           ;
+MBOX_CMD_SEND_MESSAGE   equ 3                           ;
+MBOX_CMD_MESSGAGE_COUNT equ 4                           ;
+MBOX_CMD_GET_MESSAGE    equ 5                           ;
+MBOX_CMD_GET_RAND_USERS equ 6                           ; # ?
+MBOX_CMD_AWAIT_USERS    equ 7                           ; # session / group?
+
 org                     $8000                           ; This should keep our code clear of NextBASIC sysvars
                         ;                                 (Necessary for making NextZXOS API calls);
 ;
@@ -29,9 +60,10 @@ org                     $8000                           ; This should keep our c
 Main                    proc                            ;
                         di                              ;
                         nextreg NXREG_TURBO_CTL, CPU_28 ; Next Turbo Control Register $07: 11b is 28MHz
-                        call SetupScreen                ;
+MainLoop                call SetupScreen                ;
                         call DisplayMenu                ;                        ei                              ;
                         call HandleMenuChoice           ;
+                        jp MainLoop                     ;
 pend
 
 ;
@@ -74,6 +106,8 @@ EndLoop                 jp HandleMenuChoice             ;
 HandleRegister          PrintLine(0,4,REG_PROMPT, 26)   ;
                         PrintLine(0,5,PROMPT, 2)        ;
                         call HandleUserIdInput          ;
+                        cp $20                          ; was last key pressed a space?
+                        ret z                           ; yes. back to menu - input was cancelled by break
                         PrintLine(0,8,OK, 2)            ;
                         call RegisterUserId             ;
                         PrintLine(0,8,OK, 2)            ;
@@ -82,7 +116,7 @@ HandleRegister          PrintLine(0,4,REG_PROMPT, 26)   ;
 
 RegisterUserId:         PrintLine(2,12,OK,2)            ;
 
-MakeCIPStart:           
+MakeCIPStart:
                         ld de, Buffer                   ;
                         WriteString(Cmd.CIPSTART1, Cmd.CIPSTART1Len);
                         WriteString(MboxHost, MboxHostLen) ;
@@ -90,7 +124,7 @@ MakeCIPStart:
                         WriteString(MboxPort, MboxPortLen) ;
                         WriteString(Cmd.Terminate, Cmd.TerminateLen);
 
-InitialiseESP:          
+InitialiseESP:
                         PrintLine(0,13, Buffer, 51)     ;
                         PrintLine(0,14,Msg.InitESP,20)  ; "Initialising WiFi..."
                         ; jp InitialiseESP                ;
@@ -151,7 +185,7 @@ InitialiseESP:
                         ErrorIfCarry(Err.ESPComms3)     ; Raise ESP error if no response
                         call ESPReceiveWaitOK           ;
                         ErrorIfCarry(Err.ESPComms4)     ; Raise ESP error if no response
-Connect:                
+Connect:
                         PrintMsg(Msg.Connect1)          ;
                         ; Print(MboxHost, MboxHost) ;
                         PrintMsg(Msg.Connect2)          ;
@@ -161,7 +195,36 @@ Connect:
                         ErrorIfCarry(Err.ESPConn2)      ; Raise ESP error if no response
                         PrintMsg(Msg.Connected)         ;
 
-MakeCIPSend:            
+; request:
+; protocol maj=0 min=1
+; 26 chars is min len of valid request
+;
+; pos:   |  0        | 2    |  3   |  4     | 25         | 46      |
+; size:  |  2        | 1    |  1   |  20    | 20         | 255     |
+; field: |  protocol | cmd  |  app | userid | param1:    | message |
+;        |           |      |      |        | nickname/* |         |
+;        |           |      |      |        | or msgid   |         |
+;
+; cmds
+;
+; 1. register user for app
+;
+; response:
+;
+; pos:       |  0      | 1              |
+; size:      |  1      | 20             |
+; field:     | status  | nickname       |
+; condition: |         | status=101/201 |
+;
+; register
+; 0 1 1 1 98 97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114 201 115 116 117  97 114 116   0   0   0   0   0   0   0   0   0
+;
+                       ;
+                                ;
+
+                           ;
+
+MakeCIPSend:
                         ld de, MsgBuffer                ;
                         WriteString(Cmd.CIPSEND, Cmd.CIPSENDLen);
                         WriteString(WordStart, WordLen) ;
@@ -173,7 +236,7 @@ MakeCIPSend:
                         WriteString(RequestMsg, RequestMsgLen);
                         WriteString(Cmd.Terminate, Cmd.TerminateLen);
 
-SendRequest:            
+SendRequest:
                         ESPSendBuffer(MsgBuffer)        ;
                         call ESPReceiveWaitOK           ;
                         ErrorIfCarry(Err.ESPComms5)     ; Raise wifi error if no response
@@ -182,9 +245,17 @@ SendRequest:
                         ESPSendBufferLen(Buffer, RequestLen);
                         ErrorIfCarry(Err.ESPConn3)      ; Raise connection error
 
+ReceiveResponse:
+                        call ESPReceiveBuffer           ;
+                        call ParseIPDPacket             ;
+                        ErrorIfCarry(Err.ESPConn4)      ; Raise connection error if no IPD packet
+                        PrintAt(0,11)                   ;
 
+                        ld hl, (ResponseStart)          ;
+                        ld a, (hl)                      ;
+                        call PrintAHexNoSpace           ;
+                        ret                             ;
 
-; TODO allow exit with BREAK
 HandleUserIdInput       ld b, 20                        ; collect 20 chars for userId
                         ld c,0                          ; used to debounce
                         ld hl, INBUF                    ; which buffer to store chars
@@ -203,9 +274,13 @@ ShiftCheck              cp $27                          ; $27=CS - check if caps
                         jp nz, NoShiftPressed           ; no
                         ld a,e                          ; yes. check 2nd char
                         cp $23                          ; $23=0 - is 2nd char 0 key? (CS + 0 = delete)
+                        jp z, Delete                    ; yes
+                        cp $20                          ; no. is 2nd char SPACE? (CS+SP=break)
+                        ret z                           ; yes back to menu
                         jp nz, InputLoop                ; no. collect another char
-                        push af                         ; yes
-Delete                  ld a,b                          ; let's see if we've got any chars to delete
+
+Delete                  push af                         ; yes
+                        ld a,b                          ; let's see if we've got any chars to delete
                         cp 0                            ;
                         jp z, InputLoop                 ; no. collect another char
                         pop af                          ; yes
@@ -241,9 +316,9 @@ NoShiftPressed          ld a,e                          ; do we have a key press
                         dec b                           ; one less char to collect
                         ld a,b                          ;
                         cp 0                            ; collected all chars?
-                        ld a, c                         ; restore after the count check
+                        ld a, c                         ;    (restore after the count check)
                         ret z                           ; yes
-                        jp InputLoop                    ;
+                        jp InputLoop                    ; no
 
 NoKeyPressed            cp c                            ; is current keycode same as last?
                         jp z, InputLoop                 ; yes - just loop again
@@ -354,11 +429,11 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver<=76, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";

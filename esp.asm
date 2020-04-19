@@ -15,13 +15,13 @@
 ; limitations under the License.
 
 Cmd                     proc                            ;
-CIPSTART1:              db "AT+CIPSTART=\"TCP\",\"";    ;
+                        CIPSTART1: db "AT+CIPSTART=\"TCP\",\"";;
                         CIPSTART1Len equ $-CIPSTART1    ;
-CIPSTART2:              db "\","             ;          ;
+                        CIPSTART2: db "\","             ;;
                         CIPSTART2Len equ $-CIPSTART2    ;
-Terminate:              db CR, LF, 0                    ;
+                        Terminate: db CR, LF, 0         ;
                         TerminateLen equ $-Terminate    ;
-CIPSEND:                db "AT+CIPSEND="                ;
+                        CIPSEND: db "AT+CIPSEND="       ;
                         CIPSENDLen equ $-CIPSEND        ;
 pend
 
@@ -201,9 +201,16 @@ Success:                        pop af                  ;
                                 ret                     ;
 Failure:                        ld hl, Err.ESPTimeout   ; Ignore current stack depth, and just jump
 HandleError:                    
+                                ; if enabled ErrDebug                             ;
                                 call PrintRst16Error    ;
 Stop:                           Border(2)               ;
                                 jr Stop                 ;
+        ; else                                            ;
+                                ;                       push hl                 ;
+                                ;                       call PrintRst16Error    ;
+                                ;                       pop hl                  ;
+                                ;                                   ; jp Return.WithCustomError     ; Straight to the error handing exit routine
+        ; endif                                           ;
 Rollover:                       
 Value2                          equ $+1: ld hl, SMC     ; Check the two upper values
                                 ld a, h                 ;
@@ -275,4 +282,75 @@ Finished:                       ld hl, BufferLen        ;
                                 ld (ResponseLen), hl    ;
                                 ret                     ;
 pend
+
+ParseIPDPacket                  proc                    ;
+                                ld hl, Buffer           ;
+                                ld bc, (ResponseLen)    ;
+SearchAgain:                    ld a, b                 ;
+                                or a                    ;
+                                jp m, NotFound          ; If bc has gone negative then not found
+                                or c                    ;
+                                jp z, NotFound          ; If bc is zero then not found
+                                ld a, '+'               ;
+                                cpir                    ;
+                                jp po, NotFound         ;
+                                ld a, (hl)              ;
+                                cp 'I'                  ;
+                                jr nz, SearchAgain      ;
+                                inc hl                  ;
+                                dec bc                  ;
+                                ld a, (hl)              ;
+                                cp 'P'                  ;
+                                jr nz, SearchAgain      ;
+                                inc hl                  ;
+                                dec bc                  ;
+                                ld a, (hl)              ;
+                                cp 'D'                  ;
+                                jr nz, SearchAgain      ;
+                                inc hl                  ;
+                                dec bc                  ;
+                                ld a, (hl)              ;
+                                cp ','                  ;
+                                jr nz, SearchAgain      ;
+                                inc hl                  ;
+ParseNumber:                    ld (NumStart), hl       ;
+                                ld bc, 0                ;
+ParseNumberLoop:                ld a, (hl)              ;
+                                cp ':'                  ;
+                                jr z, FinishedNumber    ;
+                                cp '0'                  ;
+                                jp c, NotFound          ;
+                                cp '9'+1                ;
+                                jp nc, NotFound         ;
+                                inc hl                  ;
+                                inc bc                  ;
+                                ld a, b                 ;
+                                or c                    ;
+                                cp 6                    ;
+                                jp c, ParseNumberLoop   ;
+FinishedNumber:                 
+                                inc hl                  ;
+                                ld (ResponseStart), hl  ;
+                                push bc                 ;
+                                ld hl, 5                ;
+                                or a                    ;
+                                sbc hl, bc              ;
+                                ld bc, hl               ;
+                                ld hl, Zeroes           ;
+                                ld de, AsciiDec         ;
+                                ldir                    ;
+NumStart                        equ $+1: ld hl, SMC     ;
+                                pop bc                  ; The five bytes at AsciiDec are now the zero prefixed
+                                ldir                    ; ASCII decimal IPD packet count.
+                                DecodeDecimal(ParseIPDPacket.AsciiDec, 5) ; HL now equals the IPD packet count
+                                ld (ResponseLen), hl    ;
+                                or a                    ; Clear carry, no error, response round
+                                ret                     ;
+NotFound:                       
+                                scf                     ; Carry, response not found
+                                ret                     ;
+AsciiDec:                       ds 5                    ;
+Zeroes:                         db "00000"              ;
+pend
+
 
