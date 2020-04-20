@@ -52,6 +52,8 @@ MBOX_CMD_GET_MESSAGE    equ 5                           ;
 MBOX_CMD_GET_RAND_USERS equ 6                           ; # ?
 MBOX_CMD_AWAIT_USERS    equ 7                           ; # session / group?
 
+
+
 org                     $8000                           ; This should keep our code clear of NextBASIC sysvars
                         ;                                 (Necessary for making NextZXOS API calls);
 ;
@@ -116,7 +118,7 @@ HandleRegister          PrintLine(0,4,REG_PROMPT, 26)   ;
 
 RegisterUserId:         PrintLine(2,12,OK,2)            ;
 
-MakeCIPStart:
+MakeCIPStart:           
                         ld de, Buffer                   ;
                         WriteString(Cmd.CIPSTART1, Cmd.CIPSTART1Len);
                         WriteString(MboxHost, MboxHostLen) ;
@@ -124,7 +126,7 @@ MakeCIPStart:
                         WriteString(MboxPort, MboxPortLen) ;
                         WriteString(Cmd.Terminate, Cmd.TerminateLen);
 
-InitialiseESP:
+InitialiseESP:          
                         PrintLine(0,13, Buffer, 51)     ;
                         PrintLine(0,14,Msg.InitESP,20)  ; "Initialising WiFi..."
                         ; jp InitialiseESP                ;
@@ -185,7 +187,7 @@ InitialiseESP:
                         ErrorIfCarry(Err.ESPComms3)     ; Raise ESP error if no response
                         call ESPReceiveWaitOK           ;
                         ErrorIfCarry(Err.ESPComms4)     ; Raise ESP error if no response
-Connect:
+Connect:                
                         PrintMsg(Msg.Connect1)          ;
                         ; Print(MboxHost, MboxHost) ;
                         PrintMsg(Msg.Connect2)          ;
@@ -195,48 +197,31 @@ Connect:
                         ErrorIfCarry(Err.ESPConn2)      ; Raise ESP error if no response
                         PrintMsg(Msg.Connected)         ;
 
-; request:
-; protocol maj=0 min=1
-; 26 chars is min len of valid request
-;
-; pos:   |  0        | 2    |  3   |  4     | 25         | 46      |
-; size:  |  2        | 1    |  1   |  20    | 20         | 255     |
-; field: |  protocol | cmd  |  app | userid | param1:    | message |
-;        |           |      |      |        | nickname/* |         |
-;        |           |      |      |        | or msgid   |         |
-;
-; cmds
-;
-; 1. register user for app
-;
-; response:
-;
-; pos:       |  0      | 1              |
-; size:      |  1      | 20             |
-; field:     | status  | nickname       |
-; condition: |         | status=101/201 |
-;
-; register
-; 0 1 1 1 98 97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114 201 115 116 117  97 114 116   0   0   0   0   0   0   0   0   0
-;
-                       ;
-                                ;
+MakeCIPSend:            
+                        ld hl, 26                       ;
+                        ld (RequestLen), hl             ;
+                        ld hl, (RequestLen)             ;
+                        call ConvertWordToAsc           ;
 
-                           ;
+                        ld a, MBOX_CMD_REGISTER         ;
+                        ld (MBOX_CMD), a                ;
 
-MakeCIPSend:
                         ld de, MsgBuffer                ;
                         WriteString(Cmd.CIPSEND, Cmd.CIPSENDLen);
-                        WriteString(WordStart, WordLen) ;
+                        WriteBuffer(WordStart, WordLen) ;
                         WriteString(Cmd.Terminate, Cmd.TerminateLen);
 
-                        PrintLine(0,17, MsgBuffer, 51)  ;
+                        PrintLine(0,0, MsgBuffer, 12)   ;
+; Eep                     jp Eep                          ;
 
                         ld de, Buffer                   ;
-                        WriteString(RequestMsg, RequestMsgLen);
+                        WriteString(MBOX_PROTOCOL_BYTES, 2);
+                        WriteString(MBOX_CMD, 1)        ;
+                        WriteString(MBOX_APP_ID, 1)     ;
+                        WriteString(INBUF, 20)          ;
                         WriteString(Cmd.Terminate, Cmd.TerminateLen);
 
-SendRequest:
+SendRequest:            
                         ESPSendBuffer(MsgBuffer)        ;
                         call ESPReceiveWaitOK           ;
                         ErrorIfCarry(Err.ESPComms5)     ; Raise wifi error if no response
@@ -245,7 +230,7 @@ SendRequest:
                         ESPSendBufferLen(Buffer, RequestLen);
                         ErrorIfCarry(Err.ESPConn3)      ; Raise connection error
 
-ReceiveResponse:
+ReceiveResponse:        
                         call ESPReceiveBuffer           ;
                         call ParseIPDPacket             ;
                         ErrorIfCarry(Err.ESPConn4)      ; Raise connection error if no IPD packet
@@ -257,7 +242,7 @@ ReceiveResponse:
                         ret                             ;
 
 HandleUserIdInput       ld b, 20                        ; collect 20 chars for userId
-                        ld c,0                          ; used to debounce
+                        ld c, $24                          ; used to debounce
                         ld hl, INBUF                    ; which buffer to store chars
 InputLoop               PrintLine(3,5,INBUF, 36)        ; show current buffer contents   TODO restore to 51
                         push hl                         ;
@@ -349,9 +334,9 @@ MboxHost:               defb "nextmailbox.spectrum.cl"  ;
 MboxHostLen:            equ $-MboxHost                  ;
 MboxPort:               defb "8361"                     ;
 MboxPortLen:            equ $-MboxPort                  ;
-RequestLen:             equ RequestVal                  ;
-WordStart:              defb "6"                        ;
-WordLen:                equ 1                           ;
+RequestLen:             dw $0000                        ;
+WordStart:              ds 5                            ;
+WordLen:                dw $0000                        ;
 ResponseStart:          dw $0000                        ;
 ResponseLen:            dw $0000                        ;
 Prescaler:              ds 3                            ;
@@ -362,6 +347,10 @@ MsgBufferLen            equ $-MsgBuffer                 ;
 RequestVal              defb 6                          ;
 RequestMsg              defb "hiya"                     ;
 RequestMsgLen           equ $-RequestMsg                ;
+
+MBOX_PROTOCOL_BYTES     defb $00, $01                   ;
+MBOX_APP_ID             defb $01                        ; nxtmail is app 1 in db
+MBOX_CMD                defb $01                        ;
 
 PrintLine               macro(X, Y, string, len)        ;
                           push de                       ;
@@ -429,11 +418,11 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver<=76, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
