@@ -2,8 +2,8 @@
 ; NXTMAIL - mailer for ZX Spectrum Next
 ;   uses Next Mailbox Protocol 0.1
 
-                        ;   zeusemulate "48K"               ;
-                        zeusemulate "Next", "RAW"       ; RAW prevents Zeus from adding some BASIC emulator-friendly;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                        ;   zeusemulate "48K"
+                        zeusemulate "Next", "RAW"       ; RAW prevents Zeus from adding some BASIC emulator-friendly
 zoLogicOperatorsHighPri = false                         ; data like the stack and system variables. Not needed because
 zoSupportStringEscapes  = true                          ;
 zxAllowFloatingLabels   = false                         ; this only runs on the Next, and everything is already present.
@@ -139,12 +139,12 @@ InitialiseESP:
                         NextRegRead(Reg.VideoTiming)    ;
                         and %111                        ;
                         push af                         ;
-                        ld d, a                         ;
+                  /*      ld d, a                         ;
                         ld e, 5                         ;
                         mul                             ;
                         ex de, hl                       ;
                         add hl, Timings.Table           ;
-                        call PrintRst16                 ; "VGA0/../VGA6/HDMI"
+                        */ call PrintRst16              ; "VGA0/../VGA6/HDMI"
                         PrintMsg(Msg.SetBaud2)          ; " timings"
                         pop af                          ;
                         add a,a                         ;
@@ -164,14 +164,14 @@ InitialiseESP:
                         out (c), h                      ; because bit 7 ensures that it is interpreted correctly.
                         inc b                           ; Write to UART control port 0x153B
 
-                        /*ld a, (Prescaler+2)             ; Print three bytes written for debug purposes
-                        call PrintAHexNoSpace
-                        ld a, (Prescaler+1)
-                        call PrintAHexNoSpace
-                        ld a, (Prescaler)
-                        call PrintAHexNoSpace
-                        ld a, CR
-                        rst 16*/                        ;
+;                        ld a, (Prescaler+2)             ; Print three bytes written for debug purposes
+;                        call PrintAHexNoSpace
+;                        ld a, (Prescaler+1)
+;                        call PrintAHexNoSpace
+;                        ld a, (Prescaler)
+;                        call PrintAHexNoSpace
+;                        ld a, CR
+;                        rst 16                        ;
 
                         ESPSend("ATE0")                 ; * Until we have absolute frame-based timeouts, send first AT
                         call ESPReceiveWaitOK           ; * cmd twice to give it longer to respond to one of them.
@@ -182,7 +182,7 @@ InitialiseESP:
                         ; * However... the UART buffer probably needs flushing here now!
                         ESPSend("AT+CIPCLOSE")          ; Don't raise error on CIPCLOSE
                         call ESPReceiveWaitOK           ; Because it might not be open
-                        //ErrorIfCarry(Err.ESPComms)    ; We never normally want to raise an error after CLOSE
+                        ; ErrorIfCarry(Err.ESPComms)    ; We never normally want to raise an error after CLOSE
                         ESPSend("AT+CIPMUX=0")          ;
                         ErrorIfCarry(Err.ESPComms3)     ; Raise ESP error if no response
                         call ESPReceiveWaitOK           ;
@@ -211,7 +211,7 @@ MakeCIPSend:
                         WriteBuffer(WordStart, WordLen) ;
                         WriteString(Cmd.Terminate, Cmd.TerminateLen);
 
-                        PrintLine(0,0, MsgBuffer, 12)   ;
+;                                          PrintLine(0,0, MsgBuffer, 12)   ;
 ; Eep                     jp Eep                          ;
 
                         ld de, Buffer                   ;
@@ -234,15 +234,29 @@ ReceiveResponse:
                         call ESPReceiveBuffer           ;
                         call ParseIPDPacket             ;
                         ErrorIfCarry(Err.ESPConn4)      ; Raise connection error if no IPD packet
-                        PrintAt(0,11)                   ;
+;                        PrintAt(0,11)                   ;
+
 
                         ld hl, (ResponseStart)          ;
                         ld a, (hl)                      ;
-                        call PrintAHexNoSpace           ;
+;                        call PrintAHexNoSpace           ;
+                        cp 101                          ;
+                        jp z, PrintNickname             ;
+                        cp 201                          ;
+                        jp z, PrintNickname             ;
+PrintBadUser            PrintLine(30,0,BAD_USER_MSG, 20) ;
+                        ret                             ;
+PrintNickname           ld de, MBOX_NICK                ;
+                        ld hl, (ResponseStart)          ;
+                        inc hl                          ;
+                        ld bc, 20                       ;
+                        ldir                            ;
+                        PrintLine(30,0,MBOX_NICK,20);
                         ret                             ;
 
+
 HandleUserIdInput       ld b, 20                        ; collect 20 chars for userId
-                        ld c, $24                          ; used to debounce
+                        ld c, $24                       ; used to debounce
                         ld hl, INBUF                    ; which buffer to store chars
 InputLoop               PrintLine(3,5,INBUF, 36)        ; show current buffer contents   TODO restore to 51
                         push hl                         ;
@@ -329,7 +343,7 @@ OK                      defb "OK"                       ;
 
 INBUF                   defs 128, ' '                   ; our input buffer
 BUFLEN                  defs 1                          ;
-
+BAD_USER_MSG            defb "<no user registered>"     ;
 MboxHost:               defb "nextmailbox.spectrum.cl"  ;
 MboxHostLen:            equ $-MboxHost                  ;
 MboxPort:               defb "8361"                     ;
@@ -351,6 +365,7 @@ RequestMsgLen           equ $-RequestMsg                ;
 MBOX_PROTOCOL_BYTES     defb $00, $01                   ;
 MBOX_APP_ID             defb $01                        ; nxtmail is app 1 in db
 MBOX_CMD                defb $01                        ;
+MBOX_NICK               defs 20                         ;
 
 PrintLine               macro(X, Y, string, len)        ;
                           push de                       ;
@@ -418,11 +433,11 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver<=76, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
