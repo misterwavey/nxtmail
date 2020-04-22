@@ -89,15 +89,21 @@ Handle                  db 255                          ;
 ;                         A = 7   Name error - not 8.3?
 ;                         A = 11  Drive not found
 ;
-fOpen:                  
+fOpenForRead:
                         ld a, (DefaultDrive)            ; get drive we're on
                         ld b, FA_READ                   ; b = open mode
                         Rst8(esxDOS.F_OPEN)             ; open read mode
                         ld (Handle), a                  ;
                         ret                             ; Returns a file handler in 'A' register.
 
-fCreate:                
-                        ld b, FA_WRITE+FA_CREATE        ;
+fOpenForWrite:
+                        ld a, (DefaultDrive)            ; get drive we're on
+                        ld b, FA_WRITE                   ; b = open mode
+                        Rst8(esxDOS.F_OPEN)             ; open read mode
+                        ld (Handle), a                  ;
+                        ret                             ; Returns a file handler in 'A' register.
+fCreate:
+                        ld b, FA_WRITE+FA_OVERWRITE        ;
                         Rst8(esxDOS.F_OPEN)             ;
                         ld (Handle), a                  ;
                         ret                             ;

@@ -79,17 +79,21 @@ pend
 ;
 
 
-SaveFile                ld ix, FILE_NAME                ;
-                        call esxDOS.fOpen               ;
+SaveFile                ld a, (esxDOS.DefaultDrive)     ;
+                        ld ix, FILE_NAME                ;
+                        call esxDOS.fOpenForWrite       ;
                         jp nc, DoSave                   ;
-DoCreate                call esxDOS.fCreate             ;
+DoCreate                ld a, (esxDOS.DefaultDrive)     ;
+                        ld ix, FILE_NAME                ;
+                        call esxDOS.fCreate             ;
                         jp nc, DoSave                   ;
-                        PrintLine(0,4,Err.FileCreate, 20) ;
+                        PrintLine(0,5,Err.FileCreate, 20) ;
 
 DoSave                  ld ix, MBOX_NICK                ;
                         ld bc, 20                       ;
                         call esxDOS.fWrite              ;
                         jp nc, CloseSaved               ;
+
                         push af                         ;
                         PrintAt(0,5)                    ;
                         pop af                          ;
@@ -98,32 +102,40 @@ DoSave                  ld ix, MBOX_NICK                ;
                         ret                             ;
 
 CloseSaved              call esxDOS.fClose              ;
-                        ret c                           ;
+                        ret nc                          ;
                         PrintLine(0,4,Err.FileClose,20) ;
                         ret                             ;
 ;
 ; load
 ;
 
-LoadFile                ld ix, FILE_NAME                ;
-                        call esxDOS.fOpen               ;
+LoadFile                ld a, (esxDOS.DefaultDrive)     ;
+                        ld ix, FILE_NAME                ;
+                        call esxDOS.fOpenForRead        ;
                         jp nc, ReadFile                 ; if open ok
-StatDir                 ld ix, DIR_NAME                 ; else check dir exists
-                        ld de, FILEBUF                  ;
-                        call esxDOS.fStat               ;
-                        cp esxDOS.esx_enotdir           ; does dir exist?
-                        ret nz                          ; yes
-                        ld ix, DIR_NAME                 ; no
+                        cp esxDOS.esx_enoent            ; else was erro no such file?
+                        ret z                           ; yes - we'll save one later
+                        cp esxDOS.esx_enotdir           ; no, was error 'no such directory'?
+                        jp z, Mkdir                     ; yes go make one
+                        push af                         ; no, display error
+                        PrintAt(0,10)                   ;
+                        pop af                          ;
+                        call PrintAHexNoSpace           ;
+                        jp Fepd                         ;  forever
+
+Mkdir                   ld a, (esxDOS.DefaultDrive)     ;
+                        ld ix, DIR_NAME                 ;
                         call esxDOS.fMkdir              ; create it
                         jp nc, MkdirOK                  ; if it worked
                         push af                         ; if it didn't
-                        PrintAt(5,10)                   ;
+                        PrintAt(10,15)                  ;
                         pop af                          ;
                         call PrintAHexNoSpace           ;
 
 Fepd                    jp Fepd                         ;
 
 MkdirOK                 PrintLine(0,5,OK,2)             ;
+                        jp Fepd                         ;
 
                         ret                             ;
 ReadFile                ld ix, FILEBUF                  ;
@@ -430,8 +442,8 @@ INBUF                   defs 128, ' '                   ; our input buffer
 BUFLEN                  defs 1                          ;
 FILEBUF                 defs 128                        ;
 
-FILE_NAME               defb "nxtMail.dat",0            ;
-DIR_NAME                defb "C:/nxtMail/",0            ;
+FILE_NAME               defb "/nxtMail2/nxtMail.dat",0  ;
+DIR_NAME                defb "/nxtMail2",0              ;
                         ;
 MboxHost:               defb "nextmailbox.spectrum.cl"  ;
 MboxHostLen:            equ $-MboxHost                  ;
@@ -521,12 +533,12 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver<=76, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
