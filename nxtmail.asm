@@ -63,6 +63,7 @@ Main                    proc                            ;
                         di                              ;
                         nextreg NXREG_TURBO_CTL, CPU_28 ; Next Turbo Control Register $07: 11b is 28MHz
 MainLoop                call SetupScreen                ;
+                        call LoadFile                   ;
                         call DisplayMenu                ;                        ei                              ;
                         call HandleMenuChoice           ;
                         jp MainLoop                     ;
@@ -71,6 +72,50 @@ pend
 ;
 ; end of main
 ;
+
+SaveFile                ld ix, FILE_NAME                ;
+                        call esxDOS.fOpen               ;
+                        jp nc, DoSave                   ;
+DoCreate                call esxDOS.fCreate             ;
+                        jp nc, DoSave                   ;
+                        PrintLine(0,4,Err.FileCreate, 20) ;
+
+DoSave                  ld ix, MBOX_NICK                ;
+                        ld bc, 20                       ;
+                        call esxDOS.fWrite              ;
+                        jp nc, CloseSaved
+                        PrintAt(0,5)
+                        call PrintAHexNoSpace
+                        PrintLine(0, 4, Err.FileWrite, 20);
+                        ret                             ;
+
+CloseSaved              call esxDOS.fClose              ;
+                        ret c                           ;
+                        PrintLine(0,4,Err.FileClose,20) ;
+                        ret                             ;
+
+LoadFile                ld ix, FILE_NAME                ;
+                        call esxDOS.fOpen               ;
+                        jp nc, ReadFile                 ;
+                        PrintLine(0,4,OK,2)             ;
+                        ret                             ;
+ReadFile                ld ix, FILEBUF                  ;
+                        ld bc, 20                       ;
+                        call esxDOS.fRead               ;
+                        jp nc, CloseFile                ;
+                        PrintLine(0,4,Err.FileRead,20)  ;
+                        ret                             ;
+
+CloseFile               call esxDOS.fClose              ;
+                        jp nc, ProcessFileBuf           ;
+                        PrintLine(0,4,Err.FileClose,20) ;
+
+ProcessFileBuf          ld hl, FILEBUF                  ;
+                        ld de, MBOX_NICK                ;
+                        ld bc, 20                       ;
+                        ldir                            ;
+                        ret                             ;
+
 
 SetupScreen             Border(7)                       ; 7=white
                         OpenOutputChannel(2)            ; ROM: Open channel to upper screen (channel 2)
@@ -139,12 +184,12 @@ InitialiseESP:
                         NextRegRead(Reg.VideoTiming)    ;
                         and %111                        ;
                         push af                         ;
-                  /*      ld d, a                         ;
+                        ld d, a                         ;
                         ld e, 5                         ;
                         mul                             ;
                         ex de, hl                       ;
                         add hl, Timings.Table           ;
-                        */ call PrintRst16              ; "VGA0/../VGA6/HDMI"
+                        call PrintRst16                 ; "VGA0/../VGA6/HDMI"
                         PrintMsg(Msg.SetBaud2)          ; " timings"
                         pop af                          ;
                         add a,a                         ;
@@ -251,7 +296,9 @@ PrintNickname           ld de, MBOX_NICK                ;
                         inc hl                          ;
                         ld bc, 20                       ;
                         ldir                            ;
-                        PrintLine(30,0,MBOX_NICK,20);
+                        PrintLine(30,0,MBOX_NICK,20)    ;
+                        call SaveFile
+Fep                     jp Fep;
                         ret                             ;
 
 
@@ -340,14 +387,25 @@ MENU_LINE_3             defb "3. List messages    "     ;
 REG_PROMPT              defb "Enter your Next Mailbox Id";
 PROMPT                  defb "> "                       ;
 OK                      defb "OK"                       ;
+BAD_USER_MSG            defb "<no user registered>"     ;
 
 INBUF                   defs 128, ' '                   ; our input buffer
 BUFLEN                  defs 1                          ;
-BAD_USER_MSG            defb "<no user registered>"     ;
+FILEBUF                 defs 128                        ;
+
+FILE_NAME               defb "nxtMail.dat",0            ;
+DIR_NAME                defb "c:/nxtMail/",0            ;
+                        ;
 MboxHost:               defb "nextmailbox.spectrum.cl"  ;
 MboxHostLen:            equ $-MboxHost                  ;
 MboxPort:               defb "8361"                     ;
 MboxPortLen:            equ $-MboxPort                  ;
+
+MBOX_PROTOCOL_BYTES     defb $00, $01                   ;
+MBOX_APP_ID             defb $01                        ; nxtmail is app 1 in db
+MBOX_CMD                defb $01                        ;
+MBOX_NICK               defs 20                         ;
+
 RequestLen:             dw $0000                        ;
 WordStart:              ds 5                            ;
 WordLen:                dw $0000                        ;
@@ -358,14 +416,7 @@ Buffer:                 ds 256                          ;
 BufferLen               equ $-Buffer                    ;
 MsgBuffer:              ds 256                          ;
 MsgBufferLen            equ $-MsgBuffer                 ;
-RequestVal              defb 6                          ;
-RequestMsg              defb "hiya"                     ;
-RequestMsgLen           equ $-RequestMsg                ;
 
-MBOX_PROTOCOL_BYTES     defb $00, $01                   ;
-MBOX_APP_ID             defb $01                        ; nxtmail is app 1 in db
-MBOX_CMD                defb $01                        ;
-MBOX_NICK               defs 20                         ;
 
 PrintLine               macro(X, Y, string, len)        ;
                           push de                       ;
@@ -433,11 +484,12 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver<=76, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
