@@ -64,7 +64,7 @@ Main                    proc                            ;
                         nextreg NXREG_TURBO_CTL, CPU_28 ; Next Turbo Control Register $07: 11b is 28MHz
 MainLoop                call SetupScreen                ;
                         call LoadFile                   ;
-                        call DisplayMenu                ;                        ei                              ;
+                        call DisplayMenu                ;
                         call HandleMenuChoice           ;
                         jp MainLoop                     ;
 pend
@@ -79,22 +79,22 @@ pend
 ;
 
 
-SaveFile                ld a, (esxDOS.DefaultDrive)     ;
+SaveFile                ld a, (esxDOS.DefaultDrive)     ; set drive to system with $
                         ld ix, FILE_NAME                ;
-                        call esxDOS.fOpenForWrite       ;
-                        jp nc, DoSave                   ;
-DoCreate                ld a, (esxDOS.DefaultDrive)     ;
+                        call esxDOS.fOpenForWrite       ; do we have an existing file?
+                        jp nc, DoSave                   ; yes
+DoCreate                ld a, (esxDOS.DefaultDrive)     ; no - create file
                         ld ix, FILE_NAME                ;
                         call esxDOS.fCreate             ;
-                        jp nc, DoSave                   ;
-                        PrintLine(0,5,Err.FileCreate, 20) ;
+                        jp nc, DoSave                   ; save if create worked
+                        PrintLine(0,5,Err.FileCreate, 20) ; otherwise show error
+                        ret                             ;
+DoSave                  ld ix, INBUF                    ; save userid
+                        ld bc, 20                       ; with trailing 0s
+                        call esxDOS.fWrite              ; write to file
+                        jp nc, CloseSaved               ; if it worked, close
 
-DoSave                  ld ix, MBOX_NICK                ;
-                        ld bc, 20                       ;
-                        call esxDOS.fWrite              ;
-                        jp nc, CloseSaved               ;
-
-                        push af                         ;
+                        push af                         ;  else show error
                         PrintAt(0,5)                    ;
                         pop af                          ;
                         call PrintAHexNoSpace           ;
@@ -102,8 +102,8 @@ DoSave                  ld ix, MBOX_NICK                ;
                         ret                             ;
 
 CloseSaved              call esxDOS.fClose              ;
-                        ret nc                          ;
-                        PrintLine(0,4,Err.FileClose,20) ;
+                        ret nc                          ;  close ok?
+                        PrintLine(0,4,Err.FileClose,20) ;  no
                         ret                             ;
 ;
 ; load
@@ -150,7 +150,7 @@ CloseFile               call esxDOS.fClose              ;
                         PrintLine(0,4,Err.FileClose,20) ;
 
 ProcessFileBuf          ld hl, FILEBUF                  ;
-                        ld de, MBOX_NICK                ;
+                        ld de, INBUF                ;
                         ld bc, 20                       ;
                         ldir                            ;
                         ret                             ;
@@ -533,12 +533,12 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver<=76, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
