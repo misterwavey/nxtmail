@@ -73,6 +73,12 @@ pend
 ; end of main
 ;
 
+
+;
+; save
+;
+
+
 SaveFile                ld ix, FILE_NAME                ;
                         call esxDOS.fOpen               ;
                         jp nc, DoSave                   ;
@@ -83,9 +89,11 @@ DoCreate                call esxDOS.fCreate             ;
 DoSave                  ld ix, MBOX_NICK                ;
                         ld bc, 20                       ;
                         call esxDOS.fWrite              ;
-                        jp nc, CloseSaved
-                        PrintAt(0,5)
-                        call PrintAHexNoSpace
+                        jp nc, CloseSaved               ;
+                        push af                         ;
+                        PrintAt(0,5)                    ;
+                        pop af                          ;
+                        call PrintAHexNoSpace           ;
                         PrintLine(0, 4, Err.FileWrite, 20);
                         ret                             ;
 
@@ -93,11 +101,30 @@ CloseSaved              call esxDOS.fClose              ;
                         ret c                           ;
                         PrintLine(0,4,Err.FileClose,20) ;
                         ret                             ;
+;
+; load
+;
 
 LoadFile                ld ix, FILE_NAME                ;
                         call esxDOS.fOpen               ;
-                        jp nc, ReadFile                 ;
-                        PrintLine(0,4,OK,2)             ;
+                        jp nc, ReadFile                 ; if open ok
+StatDir                 ld ix, DIR_NAME                 ; else check dir exists
+                        ld de, FILEBUF                  ;
+                        call esxDOS.fStat               ;
+                        cp esxDOS.esx_enotdir           ; does dir exist?
+                        ret nz                          ; yes
+                        ld ix, DIR_NAME                 ; no
+                        call esxDOS.fMkdir              ; create it
+                        jp nc, MkdirOK                  ; if it worked
+                        push af                         ; if it didn't
+                        PrintAt(5,10)                   ;
+                        pop af                          ;
+                        call PrintAHexNoSpace           ;
+
+Fepd                    jp Fepd                         ;
+
+MkdirOK                 PrintLine(0,5,OK,2)             ;
+
                         ret                             ;
 ReadFile                ld ix, FILEBUF                  ;
                         ld bc, 20                       ;
@@ -115,6 +142,9 @@ ProcessFileBuf          ld hl, FILEBUF                  ;
                         ld bc, 20                       ;
                         ldir                            ;
                         ret                             ;
+;
+; setup screen
+;
 
 
 SetupScreen             Border(7)                       ; 7=white
@@ -160,6 +190,10 @@ HandleRegister          PrintLine(0,4,REG_PROMPT, 26)   ;
                         PrintLine(0,8,OK, 2)            ;
                         jp HandleMenuChoice             ;
                         ret                             ;
+
+;
+; register
+;
 
 RegisterUserId:         PrintLine(2,12,OK,2)            ;
 
@@ -297,10 +331,13 @@ PrintNickname           ld de, MBOX_NICK                ;
                         ld bc, 20                       ;
                         ldir                            ;
                         PrintLine(30,0,MBOX_NICK,20)    ;
-                        call SaveFile
-Fep                     jp Fep;
+                        call SaveFile                   ;
+Fep                     jp Fep                          ;
                         ret                             ;
 
+;
+; handle user id input
+;
 
 HandleUserIdInput       ld b, 20                        ; collect 20 chars for userId
                         ld c, $24                       ; used to debounce
@@ -394,7 +431,7 @@ BUFLEN                  defs 1                          ;
 FILEBUF                 defs 128                        ;
 
 FILE_NAME               defb "nxtMail.dat",0            ;
-DIR_NAME                defb "c:/nxtMail/",0            ;
+DIR_NAME                defb "C:/nxtMail/",0            ;
                         ;
 MboxHost:               defb "nextmailbox.spectrum.cl"  ;
 MboxHostLen:            equ $-MboxHost                  ;
@@ -484,12 +521,12 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver<=76, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
