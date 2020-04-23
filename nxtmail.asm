@@ -64,10 +64,13 @@ org                     $8000                           ; This should keep our c
 Main                    proc                            ;
                         di                              ;
                         nextreg NXREG_TURBO_CTL, CPU_28 ; Next Turbo Control Register $07: 11b is 28MHz
+                        call MakeCIPStart               ; setup comms to server
+
 MainLoop                call SetupScreen                ;
-                        call LoadFile                   ;
+                        call LoadFile                   ; obtain any previously saved userid
                         call DisplayMenu                ;
                         call HandleMenuChoice           ;
+
                         jp MainLoop                     ;
 pend
 
@@ -183,6 +186,9 @@ DisplayMenu             PrintLine(0,0,MENU_LINE_1,20)   ;
                         PrintLine(0,2,MENU_LINE_3,20)   ;
                         ret                             ;
 
+;
+; HandleMenuChoice
+;
 
 HandleMenuChoice        ei                              ;
                         call ROM_KEY_SCAN               ;
@@ -214,8 +220,12 @@ HandleRegister          PrintLine(0,4,REG_PROMPT, 26)   ;
 ;
 
 RegisterUserId:         PrintLine(2,12,OK,2)            ;
+                        ld de, outbuf                   ;
+                        call MakeCIPSend                ;
+                        call ProcessRegResponse
+                        ret                             ;
 
-MakeCIPStart:           
+MakeCIPStart:
                         ld de, Buffer                   ;
                         WriteString(Cmd.CIPSTART1, Cmd.CIPSTART1Len);
                         WriteString(MboxHost, MboxHostLen) ;
@@ -223,7 +233,7 @@ MakeCIPStart:
                         WriteString(MboxPort, MboxPortLen) ;
                         WriteString(Cmd.Terminate, Cmd.TerminateLen);
 
-InitialiseESP:          
+InitialiseESP:
                         PrintLine(0,13, Buffer, 51)     ;
                         PrintLine(0,14,Msg.InitESP,20)  ; "Initialising WiFi..."
                         ; jp InitialiseESP                ;
@@ -284,7 +294,7 @@ InitialiseESP:
                         ErrorIfCarry(Err.ESPComms3)     ; Raise ESP error if no response
                         call ESPReceiveWaitOK           ;
                         ErrorIfCarry(Err.ESPComms4)     ; Raise ESP error if no response
-Connect:                
+Connect:
                         PrintMsg(Msg.Connect1)          ;
                         ; Print(MboxHost, MboxHost) ;
                         PrintMsg(Msg.Connect2)          ;
@@ -293,15 +303,23 @@ Connect:
                         call ESPReceiveWaitOK           ;
                         ErrorIfCarry(Err.ESPConn2)      ; Raise ESP error if no response
                         PrintMsg(Msg.Connected)         ;
+                        ret                             ;
+;
+; MakeCIPSend
+;
+; A = mbox cmd
+; B = request length
+;
 
-MakeCIPSend:            
-                        ld hl, 26                       ;
+MakeCIPSend:
+                        ld a, MBOX_CMD_REGISTER         ;  which command are we sending?
+                        ld (MBOX_CMD), a                ;
+
+                        ld hl, 26                       ;  prepare the AT+CIPSEND=n structure
                         ld (RequestLen), hl             ;
                         ld hl, (RequestLen)             ;
-                        call ConvertWordToAsc           ;
+                        call ConvertWordToAsc           ;  26d becomes 2 ascii bytes for '2' and '6'
 
-                        ld a, MBOX_CMD_REGISTER         ;
-                        ld (MBOX_CMD), a                ;
 
                         ld de, MsgBuffer                ;
                         WriteString(Cmd.CIPSEND, Cmd.CIPSENDLen);
@@ -318,7 +336,7 @@ MakeCIPSend:
                         WriteString(INBUF, 20)          ;
                         WriteString(Cmd.Terminate, Cmd.TerminateLen);
 
-SendRequest:            
+SendRequest:
                         ESPSendBuffer(MsgBuffer)        ;
                         call ESPReceiveWaitOK           ;
                         ErrorIfCarry(Err.ESPComms5)     ; Raise wifi error if no response
@@ -327,14 +345,15 @@ SendRequest:
                         ESPSendBufferLen(Buffer, RequestLen);
                         ErrorIfCarry(Err.ESPConn3)      ; Raise connection error
 
-ReceiveResponse:        
+ReceiveResponse:
                         call ESPReceiveBuffer           ;
                         call ParseIPDPacket             ;
                         ErrorIfCarry(Err.ESPConn4)      ; Raise connection error if no IPD packet
+                        ret                             ;
 ;                        PrintAt(0,11)                   ;
 
 
-                        ld hl, (ResponseStart)          ;
+ProcessRegResponse      ld hl, (ResponseStart)          ;
                         ld a, (hl)                      ;
 ;                        call PrintAHexNoSpace           ;
                         cp 101                          ;
@@ -539,12 +558,12 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver>=78, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
