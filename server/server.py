@@ -37,9 +37,10 @@ STATUS_INVALID_MESSAGE_ID      = 204
 
 
 def on_new_client(clientsocket, addr, db):
-    request = clientsocket.recv(1024)        
-    response = handle_request(request, addr, db)          
-    clientsocket.send(response)
+    while True:
+      request = clientsocket.recv(1024)
+      response = handle_request(request, addr, db)
+      clientsocket.send(response)
     clientsocket.close()
 
 

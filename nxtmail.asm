@@ -1,3 +1,5 @@
+
+
 ;
 ; NXTMAIL - mailer for ZX Spectrum Next
 ;   uses Next Mailbox Protocol 0.1
@@ -121,36 +123,40 @@ LoadFile                ld a, (esxDOS.DefaultDrive)     ;
                         PrintAt(0,10)                   ;
                         pop af                          ;
                         call PrintAHexNoSpace           ;
-                        jp Fepd                         ;  forever
+Fepd                    jp Fepd                         ; loop forever
 
 Mkdir                   ld a, (esxDOS.DefaultDrive)     ;
                         ld ix, DIR_NAME                 ;
                         call esxDOS.fMkdir              ; create it
-                        jp nc, MkdirOK                  ; if it worked
+                        ret nc                          ; if it worked return
                         push af                         ; if it didn't
                         PrintAt(10,15)                  ;
                         pop af                          ;
                         call PrintAHexNoSpace           ;
+                        jp Fepd                         ; loop forever
 
-Fepd                    jp Fepd                         ;
-
-MkdirOK                 PrintLine(0,5,OK,2)             ;
-                        jp Fepd                         ;
-
-                        ret                             ;
 ReadFile                ld ix, FILEBUF                  ;
                         ld bc, 20                       ;
                         call esxDOS.fRead               ;
                         jp nc, CloseFile                ;
                         PrintLine(0,4,Err.FileRead,20)  ;
-                        ret                             ;
+                        push af                         ;
+                        PrintAt(10,15)                  ;
+                        pop af                          ;
+                        call PrintAHexNoSpace           ;
+                        jp Fepd                         ; loop forever
 
 CloseFile               call esxDOS.fClose              ;
                         jp nc, ProcessFileBuf           ;
                         PrintLine(0,4,Err.FileClose,20) ;
+                        push af                         ;
+                        PrintAt(10,15)                  ;
+                        pop af                          ;
+                        call PrintAHexNoSpace           ;
+                        jp Fepd                         ; loop forever
 
 ProcessFileBuf          ld hl, FILEBUF                  ;
-                        ld de, INBUF                ;
+                        ld de, INBUF                    ;
                         ld bc, 20                       ;
                         ldir                            ;
                         ret                             ;
@@ -533,16 +539,16 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
-zeusassert              zeusver<=76, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
-
+zeusassert              zeusver>=78, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
+; zeusprint               zeusver                         ;
 ; Generate a NEX file                                   ; Instruct the .NEX loader to write the file handle to this
                         ;        output_z80 "NxtMail.z80",$FF40, Main ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;
                         output_nex "NxtMail.nex", $FF40, Main ; Generate the file, with SP argument followed PC;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
