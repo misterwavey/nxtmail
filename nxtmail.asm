@@ -184,7 +184,15 @@ SetFontWidth            PrintChar(30)                   ; set char width in pixe
 DisplayMenu             PrintLine(0,0,MENU_LINE_1,20)   ;
                         PrintLine(0,1,MENU_LINE_2,20)   ;
                         PrintLine(0,2,MENU_LINE_3,20)   ;
+                        PrintLine(0,22,MboxHost,23)     ;
+                        ld a, (CONNECTED)               ;
+                        cp 1                            ;
+                        jp z, PrintConnected            ;
+                        PrintLine(MboxHostLen+1,22,OFFLINE,7);
+                        ret;
+PrintConnected          PrintLine(MboxHostLen+1,22,ONLINE,7);
                         ret                             ;
+
 
 ;
 ; HandleMenuChoice
@@ -398,9 +406,11 @@ FILEBUF                 defs 128                        ;
 
 FILE_NAME               defb "/nxtMail2/nxtMail.dat",0  ;
 DIR_NAME                defb "/nxtMail2",0              ;
-                        ;
 MboxHost:               defb "nextmailbox.spectrum.cl"  ;
-MboxHostLen:            equ $-MboxHost                  ;
+MboxHostLen             equ $-MboxHost                  ;
+ONLINE                  defb "online "                  ;
+OFFLINE                 defb "offline"                  ;
+MESSAGES                defb "000 messages"             ;
 MboxPort:               defb "8361"                     ;
 MboxPortLen:            equ $-MboxPort                  ;
 
@@ -408,6 +418,7 @@ MBOX_PROTOCOL_BYTES     defb $00, $01                   ;
 MBOX_APP_ID             defb $01                        ; nxtmail is app 1 in db
 MBOX_CMD                defb $01                        ;
 MBOX_NICK               defs 20                         ;
+CONNECTED               defb 00                         ;
 
 RequestLenAddr:         dw $0000                        ;
 RequestBufAddr:         dw $0000                        ;
@@ -489,13 +500,13 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "cip.asm"                       ;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "cip.asm"                       ;;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver<=78, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";

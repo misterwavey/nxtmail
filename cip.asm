@@ -1,4 +1,4 @@
-MakeCIPStart:           
+MakeCIPStart:
                         ld de, Buffer                   ;
                         WriteString(Cmd.CIPSTART1, Cmd.CIPSTART1Len);
                         WriteString(MboxHost, MboxHostLen) ;
@@ -6,7 +6,7 @@ MakeCIPStart:
                         WriteString(MboxPort, MboxPortLen) ;
                         WriteString(Cmd.Terminate, Cmd.TerminateLen);
 
-InitialiseESP:          
+InitialiseESP:
                         PrintLine(0,13, Buffer, 51)     ;
                         PrintLine(0,14,Msg.InitESP,20)  ; "Initialising WiFi..."
 
@@ -63,7 +63,7 @@ InitialiseESP:
                         ErrorIfCarry(Err.ESPComms3)     ; Raise ESP error if no response
                         call ESPReceiveWaitOK           ;
                         ErrorIfCarry(Err.ESPComms4)     ; Raise ESP error if no response
-Connect:                
+Connect:
                         PrintMsg(Msg.Connect1)          ;
                         ; Print(MboxHost, MboxHost) ;
                         PrintMsg(Msg.Connect2)          ;
@@ -72,6 +72,8 @@ Connect:
                         call ESPReceiveWaitOK           ;
                         ErrorIfCarry(Err.ESPConn2)      ; Raise ESP error if no response
                         PrintMsg(Msg.Connected)         ;
+                        ld a, 1
+                        ld (CONNECTED), a
                         ret                             ;
 ;
 ; MakeCIPSend
@@ -106,7 +108,7 @@ PopulateServerRequest   ld de, Buffer                   ; actual request for ser
                         WriteString(MBOX_APP_ID, 1)     ;
                         WriteBuffer(RequestBufAddr, RequestLen) ;
                         WriteString(Cmd.Terminate, Cmd.TerminateLen); )
-SendRequest:            
+SendRequest:
                         ESPSendBuffer(MsgBuffer)        ; >>> send CIPSEND string to ESP
                         call ESPReceiveWaitOK           ;
                         ErrorIfCarry(Err.ESPComms5)     ; Raise wifi error if no response
@@ -115,7 +117,7 @@ SendRequest:
                         ESPSendBufferLen(Buffer, RequestLenAddr); >>> send request string to server
                         ErrorIfCarry(Err.ESPConn3)      ; Raise connection error
 
-ReceiveResponse:        
+ReceiveResponse:
                         call ESPReceiveBuffer           ;
                         call ParseIPDPacket             ;
                         ErrorIfCarry(Err.ESPConn4)      ; Raise connection error if no IPD packet
