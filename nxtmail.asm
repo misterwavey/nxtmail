@@ -49,7 +49,7 @@ MBOX_STATUS_INV_MSG_ID  equ 204                         ;
 MBOX_CMD_REGISTER       equ 1                           ;
 MBOX_CMD_CHECK_REG_NICK equ 2                           ;
 MBOX_CMD_SEND_MESSAGE   equ 3                           ;
-MBOX_CMD_MESSGAGE_COUNT equ 4                           ;
+MBOX_CMD_MESSAGE_COUNT  equ 4                           ;
 MBOX_CMD_GET_MESSAGE    equ 5                           ;
 MBOX_CMD_GET_RAND_USERS equ 6                           ; # ?
 MBOX_CMD_AWAIT_USERS    equ 7                           ; # session / group?
@@ -249,145 +249,6 @@ RegisterUserId:
                         call ProcessRegResponse         ;
                         ret                             ;
 
-MakeCIPStart:           
-                        ld de, Buffer                   ;
-                        WriteString(Cmd.CIPSTART1, Cmd.CIPSTART1Len);
-                        WriteString(MboxHost, MboxHostLen) ;
-                        WriteString(Cmd.CIPSTART2, Cmd.CIPSTART2Len);
-                        WriteString(MboxPort, MboxPortLen) ;
-                        WriteString(Cmd.Terminate, Cmd.TerminateLen);
-
-InitialiseESP:          
-                        PrintLine(0,13, Buffer, 51)     ;
-                        PrintLine(0,14,Msg.InitESP,20)  ; "Initialising WiFi..."
-                        ; jp InitialiseESP                ;
-;                        PrintLine(5,12,OK,2)            ;
-; Fep                     halt                            ;
-;                        jp Fep                          ;
-
-                        PrintAt(0,15)                   ;
-                        PrintMsg(Msg.SetBaud1)          ; "Using 115200 baud, "
-                        NextRegRead(Reg.VideoTiming)    ;
-                        and %111                        ;
-                        push af                         ;
-                        ld d, a                         ;
-                        ld e, 5                         ;
-                        mul                             ;
-                        ex de, hl                       ;
-                        add hl, Timings.Table           ;
-                        call PrintRst16                 ; "VGA0/../VGA6/HDMI"
-                        PrintMsg(Msg.SetBaud2)          ; " timings"
-                        pop af                          ;
-                        add a,a                         ;
-                        ld hl, Baud.Table               ;
-                        add hl, a                       ;
-                        ld e, (hl)                      ;
-                        inc hl                          ;
-                        ld d, (hl)                      ;
-                        ex de, hl                       ; HL now contains the prescalar baud value
-                        ld (Prescaler), hl              ;
-                        ld a, %x0x1 x000                ; Choose ESP UART, and set most significant bits
-                        ld (Prescaler+2), a             ; of the 17-bit prescalar baud to zero,
-                        ld bc, UART_Sel                 ; by writing to port 0x143B.
-                        out (c), a                      ;
-                        dec b                           ; Set baud by writing twice to port 0x143B
-                        out (c), l                      ; Doesn't matter which order they are written,
-                        out (c), h                      ; because bit 7 ensures that it is interpreted correctly.
-                        inc b                           ; Write to UART control port 0x153B
-
-;                        ld a, (Prescaler+2)             ; Print three bytes written for debug purposes
-;                        call PrintAHexNoSpace
-;                        ld a, (Prescaler+1)
-;                        call PrintAHexNoSpace
-;                        ld a, (Prescaler)
-;                        call PrintAHexNoSpace
-;                        ld a, CR
-;                        rst 16                        ;
-
-                        ESPSend("ATE0")                 ; * Until we have absolute frame-based timeouts, send first AT
-                        call ESPReceiveWaitOK           ; * cmd twice to give it longer to respond to one of them.
-                        ESPSend("ATE0")                 ;
-                        ErrorIfCarry(Err.ESPComms1)     ; Raise ESP error if no response
-                        call ESPReceiveWaitOK           ;
-                        ErrorIfCarry(Err.ESPComms2)     ; Raise ESP error if no response
-                        ; * However... the UART buffer probably needs flushing here now!
-                        ESPSend("AT+CIPCLOSE")          ; Don't raise error on CIPCLOSE
-                        call ESPReceiveWaitOK           ; Because it might not be open
-                        ; ErrorIfCarry(Err.ESPComms)    ; We never normally want to raise an error after CLOSE
-                        ESPSend("AT+CIPMUX=0")          ;
-                        ErrorIfCarry(Err.ESPComms3)     ; Raise ESP error if no response
-                        call ESPReceiveWaitOK           ;
-                        ErrorIfCarry(Err.ESPComms4)     ; Raise ESP error if no response
-Connect:                
-                        PrintMsg(Msg.Connect1)          ;
-                        ; Print(MboxHost, MboxHost) ;
-                        PrintMsg(Msg.Connect2)          ;
-                        ESPSendBuffer(Buffer)           ; This is AT+CIPSTART="TCP","<server>",<port>\r\n
-                        ErrorIfCarry(Err.ESPConn1)      ; Raise ESP error if no connection
-                        call ESPReceiveWaitOK           ;
-                        ErrorIfCarry(Err.ESPConn2)      ; Raise ESP error if no response
-                        PrintMsg(Msg.Connected)         ;
-                        ret                             ;
-;
-; MakeCIPSend
-; Entry
-; A = mbox cmd
-; HL = request length (note: without the cipsend cr lf)
-; DE = request string
-; Exit
-; ResponseStart is pointer to buffer containing response
-;
-
-MakeCIPSend:            ld (RequestLen), hl             ; store length of the request we'll be sending to the server
-                        inc hl                          ;
-                        inc hl                          ;
-                        ld (RequestLenAddr), hl
-;                        ld hl, RequestLen               ; get addr of ^
-;                        ld (RequestLenAddr), hl         ; store addr
-
-                        ex de, hl                       ; need hl to store buffer below
-                        ld (RequestBufAddr), hl         ; store addr of actual request to send
-                        ex de, hl                       ; restore hl
-                        ld (MBOX_CMD), a                ; which command are we sending?
-
-;                        ld hl, (RequestLenAddr)         ; find n for the AT+CIPSEND=n structure
-;                        ld e,(hl)                       ;
-;                        inc hl                          ;
-;                        ld d,(hl)                       ; de now holds (RequestLen)
-;                        ex de,hl                        ;
-;                        inc hl                          ;
-;                        inc hl                          ;
-                        call ConvertWordToAsc           ; ie 26d becomes 2 ascii bytes for '2' and '6'
-
-
-PopulateCipSend         ld de, MsgBuffer                ; cipsend buffer
-                        WriteString(Cmd.CIPSEND, Cmd.CIPSENDLen);    AT+CIPSEND=
-                        WriteBuffer(WordStart, WordLen) ;                n
-                        WriteString(Cmd.Terminate, Cmd.TerminateLen);  cr lf
-                        PrintLine(0,12,(WordStart),2)   ;
-                        PrintLine(0,13,MsgBuffer,13)    ;
-
-PopulateServerRequest   ld de, Buffer                   ; actual request for server
-                        WriteString(MBOX_PROTOCOL_BYTES, 2);
-                        WriteString(MBOX_CMD, 1)        ;
-                        WriteString(MBOX_APP_ID, 1)     ;
-                        WriteBuffer(RequestBufAddr, RequestLen) ;
-                        WriteString(Cmd.Terminate, Cmd.TerminateLen); )
-
-SendRequest:            
-                        ESPSendBuffer(MsgBuffer)        ; >>> send CIPSEND string to ESP
-                        call ESPReceiveWaitOK           ;
-                        ErrorIfCarry(Err.ESPComms5)     ; Raise wifi error if no response
-                        call ESPReceiveWaitPrompt       ;
-                        ErrorIfCarry(Err.ESPComms6)     ; Raise wifi error if no prompt
-                        ESPSendBufferLen(Buffer, RequestLenAddr); >>> send request string to server
-                        ErrorIfCarry(Err.ESPConn3)      ; Raise connection error
-
-ReceiveResponse:        
-                        call ESPReceiveBuffer           ;
-                        call ParseIPDPacket             ;
-                        ErrorIfCarry(Err.ESPConn4)      ; Raise connection error if no IPD packet
-                        ret                             ;
 
 ;
 ; process registration response
@@ -396,20 +257,19 @@ ReceiveResponse:
 
 ProcessRegResponse      ld hl, (ResponseStart)          ;
                         ld a, (hl)                      ;
-                        cp 101                          ;
+                        cp MBOX_STATUS_USR_ALR_REG      ; already? no problem
                         jp z, PrintNickname             ;
-                        cp 201                          ;
+                        cp MBOX_STATUS_REGISTER_OK      ; ok? cool
                         jp z, PrintNickname             ;
-PrintBadUser            PrintLine(30,0,BAD_USER_MSG, 20) ;
+PrintBadUser            PrintLine(30,0,BAD_USER_MSG, 20) ; otherwise
                         ret                             ;
 PrintNickname           ld de, MBOX_NICK                ;
                         ld hl, (ResponseStart)          ;
-                        inc hl                          ;
-                        ld bc, 20                       ;
+                        inc hl                          ; move past status
+                        ld bc, 20                       ; userids are 20
                         ldir                            ;
                         PrintLine(30,0,MBOX_NICK,20)    ;
                         call SaveFile                   ;
-; Fep                     jp Fep                          ;
                         ret                             ;
 
 ;
@@ -485,13 +345,42 @@ NoKeyPressed            cp c                            ; is current keycode sam
                         ld c, a                         ; no, update c to show change
                         jp InputLoop                    ;
 
+;
+; handle send message
+;
 
 HandleSend              PrintAt(0,4)                    ;
                         PrintChar(50)                   ;
                         jp HandleMenuChoice             ;
 
+; 3. get message count
+;
+; response:
+;
+; pos:      | 0      | 1            |
+; size:     | 1      | 1            |
+; field:    | status | messageCount |
+; condition |        | status=202   |
+
 HandleList              PrintAt(0,4)                    ;
-                        PrintChar(51)                   ;
+
+                        ld a, MBOX_CMD_MESSAGE_COUNT    ; send:     0 1 4 1 98 97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114
+                        ld h, 0                         ; result: 202 3
+                        ld l, 2+1+1+20                  ; proto+cmd+app+userid
+                        ld de, INBUF                    ;
+                        call MakeCIPSend                ;
+                        call ProcessMsgCountResponse    ;
+                        ret                             ;
+
+ProcessMsgCountResponse ld hl, (ResponseStart)          ;
+                        ld a, (hl)                      ;
+                        cp MBOX_STATUS_COUNT_OK         ;
+                        jp nz, PrintProblem             ;
+                        PrintLine(0,16, OK, 2)          ;
+                        inc hl                          ;
+                        ld a, (hl)                      ;
+                        call PrintAHexNoSpace           ;
+PrintProblem            PrintLine(30,0,BAD_USER_MSG, 20) ;
                         jp HandleMenuChoice             ;
 
 
@@ -600,12 +489,13 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "cip.asm"                       ;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver<=78, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
