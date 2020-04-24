@@ -243,7 +243,7 @@ HandleRegister          PrintLine(0,4,REG_PROMPT, 26)   ;
 RegisterUserId:         
                         ld a, MBOX_CMD_REGISTER         ; send:     0   1  1   1  98  97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114
                         ld h, 0                         ; result: 201 115 116 117 97 114 116   0   0   0   0   0  0   0   0   0
-                        ld l, 2+1+1+20                  ;
+                        ld l, 2+1+1+20                  ; proto+cmd+app+userid
                         ld de, INBUF                    ;
                         call MakeCIPSend                ;
                         call ProcessRegResponse         ;
@@ -332,42 +332,55 @@ Connect:
 ; MakeCIPSend
 ; Entry
 ; A = mbox cmd
-; HL = request length
+; HL = request length (note: without the cipsend cr lf)
 ; DE = request string
 ; Exit
 ; ResponseStart is pointer to buffer containing response
 ;
 
-MakeCIPSend:            ex de, hl
-                        ld (RequestBuf), hl               ;
-                        ex de, hl
-                        ld (MBOX_CMD), a                ;  which command are we sending?
-                        inc hl                          ;  add 2 to the request length for the cr/lf
+MakeCIPSend:            ld (RequestLen), hl             ; store length of the request we'll be sending to the server
                         inc hl                          ;
-                        ld (RequestLen), hl             ;  prepare the AT+CIPSEND=n structure
-                        ld hl, (RequestLen)             ;
-                        call ConvertWordToAsc           ;  26d becomes 2 ascii bytes for '2' and '6'
+                        inc hl                          ;
+                        ld (RequestLenAddr), hl
+;                        ld hl, RequestLen               ; get addr of ^
+;                        ld (RequestLenAddr), hl         ; store addr
+
+                        ex de, hl                       ; need hl to store buffer below
+                        ld (RequestBufAddr), hl         ; store addr of actual request to send
+                        ex de, hl                       ; restore hl
+                        ld (MBOX_CMD), a                ; which command are we sending?
+
+;                        ld hl, (RequestLenAddr)         ; find n for the AT+CIPSEND=n structure
+;                        ld e,(hl)                       ;
+;                        inc hl                          ;
+;                        ld d,(hl)                       ; de now holds (RequestLen)
+;                        ex de,hl                        ;
+;                        inc hl                          ;
+;                        inc hl                          ;
+                        call ConvertWordToAsc           ; ie 26d becomes 2 ascii bytes for '2' and '6'
 
 
-                        ld de, MsgBuffer                ;
+PopulateCipSend         ld de, MsgBuffer                ; cipsend buffer
                         WriteString(Cmd.CIPSEND, Cmd.CIPSENDLen);    AT+CIPSEND=
                         WriteBuffer(WordStart, WordLen) ;                n
-                        WriteString(Cmd.Terminate, Cmd.TerminateLen);  /cr/lf
+                        WriteString(Cmd.Terminate, Cmd.TerminateLen);  cr lf
+                        PrintLine(0,12,(WordStart),2)   ;
+                        PrintLine(0,13,MsgBuffer,13)    ;
 
-                        ld de, Buffer                   ;
+PopulateServerRequest   ld de, Buffer                   ; actual request for server
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ;
                         WriteString(MBOX_APP_ID, 1)     ;
-                        WriteBuffer(RequestBuf, 20)     ;
-                        WriteString(Cmd.Terminate, Cmd.TerminateLen);
+                        WriteBuffer(RequestBufAddr, RequestLen) ;
+                        WriteString(Cmd.Terminate, Cmd.TerminateLen); )
 
 SendRequest:            
-                        ESPSendBuffer(MsgBuffer)        ;
+                        ESPSendBuffer(MsgBuffer)        ; >>> send CIPSEND string to ESP
                         call ESPReceiveWaitOK           ;
                         ErrorIfCarry(Err.ESPComms5)     ; Raise wifi error if no response
                         call ESPReceiveWaitPrompt       ;
                         ErrorIfCarry(Err.ESPComms6)     ; Raise wifi error if no prompt
-                        ESPSendBufferLen(Buffer, RequestLen);
+                        ESPSendBufferLen(Buffer, RequestLenAddr); >>> send request string to server
                         ErrorIfCarry(Err.ESPConn3)      ; Raise connection error
 
 ReceiveResponse:        
@@ -375,7 +388,6 @@ ReceiveResponse:
                         call ParseIPDPacket             ;
                         ErrorIfCarry(Err.ESPConn4)      ; Raise connection error if no IPD packet
                         ret                             ;
-;                        PrintAt(0,11)                   ;
 
 ;
 ; process registration response
@@ -384,7 +396,6 @@ ReceiveResponse:
 
 ProcessRegResponse      ld hl, (ResponseStart)          ;
                         ld a, (hl)                      ;
-;                        call PrintAHexNoSpace           ;
                         cp 101                          ;
                         jp z, PrintNickname             ;
                         cp 201                          ;
@@ -509,8 +520,9 @@ MBOX_APP_ID             defb $01                        ; nxtmail is app 1 in db
 MBOX_CMD                defb $01                        ;
 MBOX_NICK               defs 20                         ;
 
-RequestLen:             dw $0000                        ;
-RequestBuf:             dw $0000                        ;
+RequestLenAddr:         dw $0000                        ;
+RequestBufAddr:         dw $0000                        ;
+RequestLen              defb 0,0                        ;
 WordStart:              ds 5                            ;
 WordLen:                dw $0000                        ;
 ResponseStart:          dw $0000                        ;
@@ -588,12 +600,12 @@ F_READ                  macro(Address)                  ; Semantic macro to call
                           esxDOS($9D)                   ;
                           mend                          ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
 zeusassert              zeusver<=78, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
