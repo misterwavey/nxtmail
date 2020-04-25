@@ -45,7 +45,7 @@ def on_new_client(clientsocket, addr, db):
 
 
 def handle_request(request, addr, db):
-  threadName = threading.currentThread().name    
+  threadName = threading.currentThread().name
   db.ping(reconnect=True)
   if len(request) < 24:
     response = build_response(STATUS_INVALID_LENGTH)
@@ -78,11 +78,11 @@ def handle_request(request, addr, db):
       return handle_register(appId, userId, addr, db)
 
     elif cmd == CMD_CHECK_REGISTERED_NICKNAME:
-      nickname = parse_nickname(request)
+      nickname = parse_param_as_nickname(request)
       return handle_check_registered_nickname(appId, userId, nickname, addr, db)
 
     elif cmd == CMD_SEND_MESSAGE:
-      nickname = parse_nickname(request)
+      nickname = parse_param_as_nickname(request)
       if len(request) > 45:
         message = request[45:301].decode()
         printable = set(string.printable) #ascii only
@@ -381,7 +381,7 @@ def build_response(status):
 db = pymysql.connect("localhost","mboxserver","catfishbookwormzebra","mbox" )
 
 s = socket.socket()        
-port = 80                
+port = 8080                
 
 print ('Server started. Waiting for clients...')
 
