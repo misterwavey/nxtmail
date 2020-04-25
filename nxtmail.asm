@@ -107,17 +107,19 @@ DisplayMenu             PrintLine(0,0,MENU_LINE_1,20)   ;
                         jp z, PrintConnected            ;
                         PrintLine(MboxHostLen+1,18,OFFLINE,7);
                         ret                             ;
-PrintConnected          ld h,0                          ;
-                        ld a, (MSG_COUNT)               ;
-                        ld l,a                          ;
-                        call ConvertWordToAsc           ;
-                        ld bc, 2                        ; (WordLen)                ;
+PrintConnected          ld hl,(MSG_COUNT)               ;
+                        inc hl                          ;
+                        dec hl                          ; trick for zero check
+                        jp z, PrintZeroMessages         ; don't convert message count to ascii if zero (ldir uses len in BC)
+                        call ConvertWordToAsc           ; otherwise do
+                        ld bc, (WordLen)                ;
                         ld de, MSG_COUNT_BUF            ;
                         ld hl, (WordStart)              ;
                         ldir                            ;
-                        PrintLine(0,19,(WordStart),1)
-                        ;PrintLine(0,19,MSG_COUNT_BUF,2) ;
-                        PrintLine(3,19,MBOX_BLANK_NICK,20) ;
+                        PrintLine(0,19,MSG_COUNT_BUF,(WordLen)) ;
+                        jp PrintNick                    ;
+PrintZeroMessages       PrintLine(1,19,MSG_COUNT_ZERO,1)
+PrintNick               PrintLine(3,19,MBOX_BLANK_NICK,20) ;
                         PrintLine(3,19,MBOX_NICK,20)    ;
                         ret                             ;
 
@@ -261,7 +263,7 @@ ProcessMsgCountResponse ld hl, (ResponseStart)          ;
                         ld (MSG_COUNT+1), a             ; store 2nd
                         ld a, (MSG_COUNT)               ; pull 1st back
                         call PrintAHexNoSpace           ; display
-                        ret
+                        ret                             ;
 PrintProblem            PrintLine(6,19,BAD_USER_MSG, 20) ;
                         ret                             ;
 
@@ -293,10 +295,11 @@ MBOX_PROTOCOL_BYTES     defb $00, $01                   ;
 MBOX_APP_ID             defb $01                        ; nxtmail is app 1 in db
 MBOX_CMD                defb $01                        ;
 MBOX_NICK               defs 20                         ;
-MBOX_BLANK_NICK         defs 20,' '                      ;
+MBOX_BLANK_NICK         defs 20,' '                     ;
 CONNECTED               defb 00                         ;
 MSG_COUNT               defb $0,$0                      ;
 MSG_COUNT_BUF           defs 6                          ;
+MSG_COUNT_ZERO          defb '0'
 RequestLenAddr:         dw $0000                        ;
 RequestBufAddr:         dw $0000                        ;
 RequestLen              defb 0,0                        ;
@@ -311,16 +314,16 @@ MsgBuffer:              ds 256                          ;
 MsgBufferLen            equ $-MsgBuffer                 ;
 
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "file.asm"                      ;;;;;;;;;;
-include                 "keys.asm"                      ;;;;;;
-include                 "zeus.asm"                      ; syntax highlighting;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "file.asm"                      ;;;;;;;;;;;;;
+include                 "keys.asm"                      ;;;;;;;;;
+include                 "zeus.asm"                      ; syntax highlighting;;;;;;
 
 
 ; Raise an assembly-time error if the expression evaluates false
