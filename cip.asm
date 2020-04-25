@@ -72,8 +72,6 @@ Connect:
                         call ESPReceiveWaitOK           ;
                         ErrorIfCarry(Err.ESPConn2)      ; Raise ESP error if no response
                         PrintMsg(Msg.Connected)         ;
-                        ld a, 1
-                        ld (CONNECTED), a
                         ret                             ;
 ;
 ; MakeCIPSend

@@ -46,6 +46,7 @@ def on_new_client(clientsocket, addr, db):
 
 def handle_request(request, addr, db):
   threadName = threading.currentThread().name    
+  db.ping(reconnect=True)
   if len(request) < 24:
     response = build_response(STATUS_INVALID_LENGTH)
     rLen = len(request)
