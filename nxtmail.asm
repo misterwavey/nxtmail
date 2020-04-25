@@ -1,11 +1,21 @@
-
-
 ;
 ; NXTMAIL - mailer for ZX Spectrum Next
 ;   uses Next Mailbox Protocol 0.1
 
+; request:
+; protocol maj=0 min=1
+; 26 chars is min len of valid request
+;
+; pos:   |  0        | 2    |  3   |  4     | 25           | 46      |
+; size:  |  2        | 1    |  1   |  20    | 20           | 255     |
+; field: |  protocol | cmd  |  app | userid | param1:      | message |
+;        |           |      |      |        | nickname / * |         |
+;        |           |      |      |        | or msgid     |         |
+;
+
                         ;   zeusemulate "48K"
                         zeusemulate "Next", "RAW"       ; RAW prevents Zeus from adding some BASIC emulator-friendly
+
 zoLogicOperatorsHighPri = false                         ; data like the stack and system variables. Not needed because
 zoSupportStringEscapes  = true                          ;
 zxAllowFloatingLabels   = false                         ; this only runs on the Next, and everything is already present.
@@ -49,7 +59,7 @@ MBOX_STATUS_INV_MSG_ID  equ 204                         ;
 MBOX_CMD_REGISTER       equ 1                           ;
 MBOX_CMD_CHECK_REG_NICK equ 2                           ;
 MBOX_CMD_SEND_MESSAGE   equ 3                           ;
-MBOX_CMD_MESSGAGE_COUNT equ 4                           ;
+MBOX_CMD_MESSAGE_COUNT  equ 4                           ;
 MBOX_CMD_GET_MESSAGE    equ 5                           ;
 MBOX_CMD_GET_RAND_USERS equ 6                           ; # ?
 MBOX_CMD_AWAIT_USERS    equ 7                           ; # session / group?
@@ -64,10 +74,13 @@ org                     $8000                           ; This should keep our c
 Main                    proc                            ;
                         di                              ;
                         nextreg NXREG_TURBO_CTL, CPU_28 ; Next Turbo Control Register $07: 11b is 28MHz
+                        call MakeCIPStart               ; setup comms to server
+
 MainLoop                call SetupScreen                ;
-                        call LoadFile                   ;
+                        call LoadFile                   ; obtain any previously saved userid and register userid with server
                         call DisplayMenu                ;
                         call HandleMenuChoice           ;
+
                         jp MainLoop                     ;
 pend
 
@@ -76,94 +89,10 @@ pend
 ;
 
 
-;
-; save
-;
 
-
-SaveFile                ld a, (esxDOS.DefaultDrive)     ; set drive to system with $
-                        ld ix, FILE_NAME                ;
-                        call esxDOS.fOpenForWrite       ; do we have an existing file?
-                        jp nc, DoSave                   ; yes
-DoCreate                ld a, (esxDOS.DefaultDrive)     ; no - create file
-                        ld ix, FILE_NAME                ;
-                        call esxDOS.fCreate             ;
-                        jp nc, DoSave                   ; save if create worked
-                        PrintLine(0,5,Err.FileCreate, 20) ; otherwise show error
-                        ret                             ;
-DoSave                  ld ix, INBUF                    ; save userid
-                        ld bc, 20                       ; with trailing 0s
-                        call esxDOS.fWrite              ; write to file
-                        jp nc, CloseSaved               ; if it worked, close
-
-                        push af                         ;  else show error
-                        PrintAt(0,5)                    ;
-                        pop af                          ;
-                        call PrintAHexNoSpace           ;
-                        PrintLine(0, 4, Err.FileWrite, 20);
-                        ret                             ;
-
-CloseSaved              call esxDOS.fClose              ;
-                        ret nc                          ;  close ok?
-                        PrintLine(0,4,Err.FileClose,20) ;  no
-                        ret                             ;
-;
-; load
-;
-
-LoadFile                ld a, (esxDOS.DefaultDrive)     ;
-                        ld ix, FILE_NAME                ;
-                        call esxDOS.fOpenForRead        ;
-                        jp nc, ReadFile                 ; if open ok
-                        cp esxDOS.esx_enoent            ; else was erro no such file?
-                        ret z                           ; yes - we'll save one later
-                        cp esxDOS.esx_enotdir           ; no, was error 'no such directory'?
-                        jp z, Mkdir                     ; yes go make one
-                        push af                         ; no, display error
-                        PrintAt(0,10)                   ;
-                        pop af                          ;
-                        call PrintAHexNoSpace           ;
-Fepd                    jp Fepd                         ; loop forever
-
-Mkdir                   ld a, (esxDOS.DefaultDrive)     ;
-                        ld ix, DIR_NAME                 ;
-                        call esxDOS.fMkdir              ; create it
-                        ret nc                          ; if it worked return
-                        push af                         ; if it didn't
-                        PrintAt(10,15)                  ;
-                        pop af                          ;
-                        call PrintAHexNoSpace           ;
-                        jp Fepd                         ; loop forever
-
-ReadFile                ld ix, FILEBUF                  ;
-                        ld bc, 20                       ;
-                        call esxDOS.fRead               ;
-                        jp nc, CloseFile                ;
-                        PrintLine(0,4,Err.FileRead,20)  ;
-                        push af                         ;
-                        PrintAt(10,15)                  ;
-                        pop af                          ;
-                        call PrintAHexNoSpace           ;
-                        jp Fepd                         ; loop forever
-
-CloseFile               call esxDOS.fClose              ;
-                        jp nc, ProcessFileBuf           ;
-                        PrintLine(0,4,Err.FileClose,20) ;
-                        push af                         ;
-                        PrintAt(10,15)                  ;
-                        pop af                          ;
-                        call PrintAHexNoSpace           ;
-                        jp Fepd                         ; loop forever
-
-ProcessFileBuf          ld hl, FILEBUF                  ;
-                        ld de, INBUF                    ;
-                        ld bc, 20                       ;
-                        ldir                            ;
-                        ret                             ;
 ;
 ; setup screen
 ;
-
 
 SetupScreen             Border(7)                       ; 7=white
                         OpenOutputChannel(2)            ; ROM: Open channel to upper screen (channel 2)
@@ -177,12 +106,39 @@ SetFontWidth            PrintChar(30)                   ; set char width in pixe
                         PrintChar(5)                    ; to 5 (51 chars wide)
                         ret                             ;
 
+;
+; display main menu
+;
 
 DisplayMenu             PrintLine(0,0,MENU_LINE_1,20)   ;
                         PrintLine(0,1,MENU_LINE_2,20)   ;
-                        PrintLine(0,2,MENU_LINE_3,20)   ;
+                        PrintLine(0,2,MENU_LINE_3,15)   ;
+                        PrintLine(0,3,MENU_LINE_4,24)   ;
+                        PrintLine(0,18,MboxHost,23)     ;
+                        ld a, (CONNECTED)               ;
+                        cp 1                            ;
+                        jp z, PrintConnected            ;
+                        PrintLine(MboxHostLen+1,18,OFFLINE,7);
+                        ret                             ;
+PrintConnected          ld hl,(MSG_COUNT)               ;
+                        inc hl                          ;
+                        dec hl                          ; trick for zero check
+                        jp z, PrintZeroMessages         ; don't convert message count to ascii if zero (ldir uses len in BC)
+                        call ConvertWordToAsc           ; otherwise do
+                        ld bc, (WordLen)                ;
+                        ld de, MSG_COUNT_BUF            ;
+                        ld hl, (WordStart)              ;
+                        ldir                            ;
+                        PrintLine(0,19,MSG_COUNT_BUF,(WordLen)) ;
+                        jp PrintNick                    ;
+PrintZeroMessages       PrintLine(1,19,MSG_COUNT_ZERO,1);
+PrintNick               PrintLine(3,19,MBOX_BLANK_NICK,20) ;
+                        PrintLine(3,19,MBOX_NICK,20)    ;
                         ret                             ;
 
+;
+; HandleMenuChoice
+;
 
 HandleMenuChoice        ei                              ;
                         call ROM_KEY_SCAN               ;
@@ -195,264 +151,201 @@ HandleMenuChoice        ei                              ;
                         cp $1c                          ; check for 2 key
                         jp z,HandleSend                 ;
                         cp $14                          ; check for 3 key
-                        jp z, HandleList                ;
+                        jp z, HandleViewMessage         ;
+                        cp $0c                          ; check for 4 key
+                        jp z, HandleCount               ;
 EndLoop                 jp HandleMenuChoice             ;
 
-HandleRegister          PrintLine(0,4,REG_PROMPT, 26)   ;
-                        PrintLine(0,5,PROMPT, 2)        ;
+HandleRegister          PrintLine(0,5,REG_PROMPT, 26)   ;
+                        PrintLine(0,6,PROMPT, 2)        ;
                         call HandleUserIdInput          ;
                         cp $20                          ; was last key pressed a space?
                         ret z                           ; yes. back to menu - input was cancelled by break
                         PrintLine(0,8,OK, 2)            ;
                         call RegisterUserId             ;
                         PrintLine(0,8,OK, 2)            ;
-                        jp HandleMenuChoice             ;
                         ret                             ;
 
 ;
 ; register
 ;
 
-RegisterUserId:         PrintLine(2,12,OK,2)            ;
+; 1. register user for app
+;
+; response:
+;
+; pos:       |  0      | 1              |
+; size:      |  1      | 20             |
+; field:     | status  | nickname       |
+; condition: |         | status=101/201 |
 
-MakeCIPStart:           
-                        ld de, Buffer                   ;
-                        WriteString(Cmd.CIPSTART1, Cmd.CIPSTART1Len);
-                        WriteString(MboxHost, MboxHostLen) ;
-                        WriteString(Cmd.CIPSTART2, Cmd.CIPSTART2Len);
-                        WriteString(MboxPort, MboxPortLen) ;
-                        WriteString(Cmd.Terminate, Cmd.TerminateLen);
-
-InitialiseESP:          
-                        PrintLine(0,13, Buffer, 51)     ;
-                        PrintLine(0,14,Msg.InitESP,20)  ; "Initialising WiFi..."
-                        ; jp InitialiseESP                ;
-;                        PrintLine(5,12,OK,2)            ;
-; Fep                     halt                            ;
-;                        jp Fep                          ;
-
-                        PrintAt(0,15)                   ;
-                        PrintMsg(Msg.SetBaud1)          ; "Using 115200 baud, "
-                        NextRegRead(Reg.VideoTiming)    ;
-                        and %111                        ;
-                        push af                         ;
-                        ld d, a                         ;
-                        ld e, 5                         ;
-                        mul                             ;
-                        ex de, hl                       ;
-                        add hl, Timings.Table           ;
-                        call PrintRst16                 ; "VGA0/../VGA6/HDMI"
-                        PrintMsg(Msg.SetBaud2)          ; " timings"
-                        pop af                          ;
-                        add a,a                         ;
-                        ld hl, Baud.Table               ;
-                        add hl, a                       ;
-                        ld e, (hl)                      ;
-                        inc hl                          ;
-                        ld d, (hl)                      ;
-                        ex de, hl                       ; HL now contains the prescalar baud value
-                        ld (Prescaler), hl              ;
-                        ld a, %x0x1 x000                ; Choose ESP UART, and set most significant bits
-                        ld (Prescaler+2), a             ; of the 17-bit prescalar baud to zero,
-                        ld bc, UART_Sel                 ; by writing to port 0x143B.
-                        out (c), a                      ;
-                        dec b                           ; Set baud by writing twice to port 0x143B
-                        out (c), l                      ; Doesn't matter which order they are written,
-                        out (c), h                      ; because bit 7 ensures that it is interpreted correctly.
-                        inc b                           ; Write to UART control port 0x153B
-
-;                        ld a, (Prescaler+2)             ; Print three bytes written for debug purposes
-;                        call PrintAHexNoSpace
-;                        ld a, (Prescaler+1)
-;                        call PrintAHexNoSpace
-;                        ld a, (Prescaler)
-;                        call PrintAHexNoSpace
-;                        ld a, CR
-;                        rst 16                        ;
-
-                        ESPSend("ATE0")                 ; * Until we have absolute frame-based timeouts, send first AT
-                        call ESPReceiveWaitOK           ; * cmd twice to give it longer to respond to one of them.
-                        ESPSend("ATE0")                 ;
-                        ErrorIfCarry(Err.ESPComms1)     ; Raise ESP error if no response
-                        call ESPReceiveWaitOK           ;
-                        ErrorIfCarry(Err.ESPComms2)     ; Raise ESP error if no response
-                        ; * However... the UART buffer probably needs flushing here now!
-                        ESPSend("AT+CIPCLOSE")          ; Don't raise error on CIPCLOSE
-                        call ESPReceiveWaitOK           ; Because it might not be open
-                        ; ErrorIfCarry(Err.ESPComms)    ; We never normally want to raise an error after CLOSE
-                        ESPSend("AT+CIPMUX=0")          ;
-                        ErrorIfCarry(Err.ESPComms3)     ; Raise ESP error if no response
-                        call ESPReceiveWaitOK           ;
-                        ErrorIfCarry(Err.ESPComms4)     ; Raise ESP error if no response
-Connect:                
-                        PrintMsg(Msg.Connect1)          ;
-                        ; Print(MboxHost, MboxHost) ;
-                        PrintMsg(Msg.Connect2)          ;
-                        ESPSendBuffer(Buffer)           ; This is AT+CIPSTART="TCP","<server>",<port>\r\n
-                        ErrorIfCarry(Err.ESPConn1)      ; Raise ESP error if no connection
-                        call ESPReceiveWaitOK           ;
-                        ErrorIfCarry(Err.ESPConn2)      ; Raise ESP error if no response
-                        PrintMsg(Msg.Connected)         ;
-
-MakeCIPSend:            
-                        ld hl, 26                       ;
-                        ld (RequestLen), hl             ;
-                        ld hl, (RequestLen)             ;
-                        call ConvertWordToAsc           ;
-
-                        ld a, MBOX_CMD_REGISTER         ;
-                        ld (MBOX_CMD), a                ;
-
-                        ld de, MsgBuffer                ;
-                        WriteString(Cmd.CIPSEND, Cmd.CIPSENDLen);
-                        WriteBuffer(WordStart, WordLen) ;
-                        WriteString(Cmd.Terminate, Cmd.TerminateLen);
-
-;                                          PrintLine(0,0, MsgBuffer, 12)   ;
-; Eep                     jp Eep                          ;
-
-                        ld de, Buffer                   ;
+RegisterUserId:         ld a, MBOX_CMD_REGISTER         ;
+                        call BuildStandardRequest       ; send:     0   1  1   1  98  97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114
+                        ld de, REQUESTBUF               ; result: 201 115 116 117 97 114 116   0   0   0   0   0  0   0   0   0
+                        ld h, 0                         ;
+                        ld l, 2+1+1+20                  ; proto+cmd+app+userid
+                        call MakeCIPSend                ;
+                        call ProcessRegResponse         ;
+                        ret                             ;
+;
+; BuildStandardRequest
+;
+; ENTRY
+;  A = MBOX CMD
+; EXIT
+;  REQUESTBUF is populated ready for CIPSEND
+;
+BuildStandardRequest    ld (MBOX_CMD), a                ;
+                        ld de, REQUESTBUF               ; entire server request string
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ;
-                        WriteString(MBOX_APP_ID, 1)     ;
-                        WriteString(INBUF, 20)          ;
-                        WriteString(Cmd.Terminate, Cmd.TerminateLen);
-
-SendRequest:            
-                        ESPSendBuffer(MsgBuffer)        ;
-                        call ESPReceiveWaitOK           ;
-                        ErrorIfCarry(Err.ESPComms5)     ; Raise wifi error if no response
-                        call ESPReceiveWaitPrompt       ;
-                        ErrorIfCarry(Err.ESPComms6)     ; Raise wifi error if no prompt
-                        ESPSendBufferLen(Buffer, RequestLen);
-                        ErrorIfCarry(Err.ESPConn3)      ; Raise connection error
-
-ReceiveResponse:        
-                        call ESPReceiveBuffer           ;
-                        call ParseIPDPacket             ;
-                        ErrorIfCarry(Err.ESPConn4)      ; Raise connection error if no IPD packet
-;                        PrintAt(0,11)                   ;
-
-
-                        ld hl, (ResponseStart)          ;
-                        ld a, (hl)                      ;
-;                        call PrintAHexNoSpace           ;
-                        cp 101                          ;
-                        jp z, PrintNickname             ;
-                        cp 201                          ;
-                        jp z, PrintNickname             ;
-PrintBadUser            PrintLine(30,0,BAD_USER_MSG, 20) ;
+                        WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
+                        WriteString(USERIDBUF,20)           ; userid
                         ret                             ;
-PrintNickname           ld de, MBOX_NICK                ;
+
+;
+; process registration response
+;
+
+
+ProcessRegResponse      ld hl, (ResponseStart)          ;
+                        ld a, (hl)                      ;
+                        cp MBOX_STATUS_USR_ALR_REG      ; already? no problem
+                        jp z, PrintNickname             ;
+                        cp MBOX_STATUS_REGISTER_OK      ; ok? cool
+                        jp z, PrintNickname             ;
+PrintBadUser            PrintLine(6,19,MBOX_BLANK_NICK, 20);
+                        PrintLine(6,19,BAD_USER_MSG, 20) ; otherwise
+                        ret                             ;
+PrintNickname           ld a, 1                         ;
+                        ld (CONNECTED), a               ;
+                        ld de, MBOX_NICK                ;
                         ld hl, (ResponseStart)          ;
-                        inc hl                          ;
-                        ld bc, 20                       ;
+                        inc hl                          ; move past status
+                        ld bc, 20                       ; nicks/userids are 20
                         ldir                            ;
-                        PrintLine(30,0,MBOX_NICK,20)    ;
                         call SaveFile                   ;
-Fep                     jp Fep                          ;
+                        ret                             ;
+
+
+;
+; handle send message
+;
+
+; 5. sendMessage
+;
+; response:
+;
+; pos:   | 0      |
+; size:  | 1      |
+; field: | status |
+
+;                        ld a, MBOX_CMD_SEND_MESSAGE
+;                        call BuildStandardRequest       ; send:     0   1  1   1  98  97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114
+;                        ld de, REQUESTBUF               ; result: 201 115 116 117 97 114 116   0   0   0   0   0  0   0   0   0
+;                        ld h, 0                         ;
+;                        ld l, 2+1+1+20                  ; proto+cmd+app+userid
+;                        call MakeCIPSend                ;
+;                        call ProcessSendResponse         ;
+;                        ret                             ;
+;
+
+HandleSend              call HandleGetTargetNick        ;
+                        call HandleGetMessageToSend     ;
+                        ld a, MBOX_CMD_SEND_MESSAGE     ; send:   0 1 3 1 98 97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114 115 116 117 97 114 116 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 116 104 101 32 113 117 105 99 107 32 98 114 111 119 110 32 102 111 120 0
+                        ld h, 0                         ; result: 0
+                        ld l, 2+1+1+20                  ; proto+cmd+app+userid
+                        ld de, SENDBUF                  ;
+                        call MakeCIPSend                ;
+                        call ProcessSendResponse        ;
+                        ret                             ;
+
+HandleGetTargetNick     nop                             ;
+                        ret                             ;
+
+HandleGetMessageToSend  nop                             ;
+                        ret                             ;
+
+ProcessSendResponse     nop                             ;
                         ret                             ;
 
 ;
-; handle user id input
+; handle view message
 ;
 
-HandleUserIdInput       ld b, 20                        ; collect 20 chars for userId
-                        ld c, $24                       ; used to debounce
-                        ld hl, INBUF                    ; which buffer to store chars
-InputLoop               PrintLine(3,5,INBUF, 36)        ; show current buffer contents   TODO restore to 51
-                        push hl                         ;
-                        push bc                         ;
-                        call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
-                        pop bc                          ;
-                        pop hl                          ;
-                        ld a,d                          ; do we have a key modifier? (ss CS etc)
-                        cp $ff                          ;
-                        jp nz, ShiftCheck               ; yes
-                        jp NoShiftPressed               ; no
+; 4. getMessage
+;
+; response:
+;
+; pos:      | 0      | 1          | 2          |
+; size:     | 1      | 1          | n          |
+; field:    | status | messagelen | message    |
+; condition |        | status=203 | status=203 |
 
-ShiftCheck              cp $27                          ; $27=CS - check if caps shift is pressed (CS + 0 = delete)
-                        jp nz, NoShiftPressed           ; no
-                        ld a,e                          ; yes. check 2nd char
-                        cp $23                          ; $23=0 - is 2nd char 0 key? (CS + 0 = delete)
-                        jp z, Delete                    ; yes
-                        cp $20                          ; no. is 2nd char SPACE? (CS+SP=break)
-                        ret z                           ; yes back to menu
-                        jp nz, InputLoop                ; no. collect another char
-
-Delete                  push af                         ; yes
-                        ld a,b                          ; let's see if we've got any chars to delete
-                        cp 0                            ;
-                        jp z, InputLoop                 ; no. collect another char
-                        pop af                          ; yes
-                        cp c                            ; is this key same as last keypress?
-                        jp z, InputLoop                 ; yes. = debounce
-                        ld c, a                         ; no. store key for next debounce check
-                        ld (hl), ' '                    ; blank current char
-                        dec hl                          ; and reposition buffer pointer
-                        inc b                           ; and collected char count
-                        jp InputLoop                    ; collect another char
-
-NoShiftPressed          ld a,e                          ; do we have a key pressed?
-                        cp $ff                          ;
-                        jp z, NoKeyPressed              ; no
-                        push bc                         ; we have a keypress without shift
-                        push hl                         ;
-                        ld b, 0                         ;
-                        ld c, a                         ;  bc = keycode value
-                        ld hl, ROM_KEYTABLE             ;  hl = code to ascii lookup table
-                        add hl, bc                      ;  find ascii given keycode
-                        ld a, (hl)                      ;
-                        pop hl                          ;
-                        pop bc                          ;
-                        cp $20                          ; check if >= 32 (ascii space)
-                        jp c,InputLoop                  ; no, ignore
-                        cp $7f                          ; check if <= 126 (ascii ~)
-                        jp nc,InputLoop                 ; no, ignore
-                        cp c                            ; does key = last keypress?
-                        jp z, InputLoop                 ; yes - debounce
-                        ld c, a                         ; no - store char in c for next check
-                        ld (hl),a                       ; no - store char in buffer
-                        inc hl                          ;
-                        dec b                           ; one less char to collect
-                        ld a,b                          ;
-                        cp 0                            ; collected all chars?
-                        ld a, c                         ;    (restore after the count check)
-                        ret z                           ; yes
-                        jp InputLoop                    ; no
-
-NoKeyPressed            cp c                            ; is current keycode same as last?
-                        jp z, InputLoop                 ; yes - just loop again
-                        ld c, a                         ; no, update c to show change
-                        jp InputLoop                    ;
-
-
-HandleSend              PrintAt(0,4)                    ;
+HandleViewMessage       PrintAt(0,4)                    ;
                         PrintChar(50)                   ;
-                        jp HandleMenuChoice             ;
+                        ret                             ;
 
-HandleList              PrintAt(0,4)                    ;
-                        PrintChar(51)                   ;
-                        jp HandleMenuChoice             ;
+;
+; fetch number of messages for user
+;
+
+; 3. get message count
+;
+; response:
+;
+; pos:      | 0      | 1            |
+; size:     | 1      | 1            |
+; field:    | status | messageCount |
+; condition |        | status=202   |
+
+HandleCount             ld a, MBOX_CMD_MESSAGE_COUNT    ;
+                        call BuildStandardRequest       ; send:     0   1  1   1  98  97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114
+                        ld de, REQUESTBUF               ; result: 201 115 116 117 97 114 116   0   0   0   0   0  0   0   0   0
+                        ld h, 0                         ;
+                        ld l, 2+1+1+20                  ; proto+cmd+app+userid
+                        call MakeCIPSend                ;
+                        call ProcessMsgCountResponse    ;
+                        ret                             ;
+
+ProcessMsgCountResponse ld hl, (ResponseStart)          ;
+                        ld a, (hl)                      ;
+                        cp MBOX_STATUS_COUNT_OK         ;
+                        jp nz, PrintProblem             ;
+                        PrintLine(0,16, OK, 2)          ;
+                        inc hl                          ; move past status
+                        ld a, (hl)                      ; get count
+                        ld (MSG_COUNT), a               ; store
+                        inc hl                          ; get 2nd byte
+                        ld a, (hl)                      ;
+                        ld (MSG_COUNT+1), a             ; store 2nd
+                        ld a, (MSG_COUNT)               ; pull 1st back
+                        call PrintAHexNoSpace           ; display
+                        ret                             ;
+PrintProblem            PrintLine(6,19,BAD_USER_MSG, 20) ;
+                        ret                             ;
 
 
 MENU_LINE_1             defb "1. Register userId  "     ;
 MENU_LINE_2             defb "2. Send message     "     ;
-MENU_LINE_3             defb "3. List messages    "     ;
+MENU_LINE_3             defb "3. view message"          ;
+MENU_LINE_4             defb "4. refresh message count" ;
 REG_PROMPT              defb "Enter your Next Mailbox Id";
 PROMPT                  defb "> "                       ;
 OK                      defb "OK"                       ;
 BAD_USER_MSG            defb "<no user registered>"     ;
 
-INBUF                   defs 128, ' '                   ; our input buffer
+USERIDBUF                   defs 128, ' '                   ; our input buffer
 BUFLEN                  defs 1                          ;
 FILEBUF                 defs 128                        ;
 
 FILE_NAME               defb "/nxtMail2/nxtMail.dat",0  ;
 DIR_NAME                defb "/nxtMail2",0              ;
-                        ;
 MboxHost:               defb "nextmailbox.spectrum.cl"  ;
-MboxHostLen:            equ $-MboxHost                  ;
+MboxHostLen             equ $-MboxHost                  ;
+OFFLINE                 defb "offline"                  ;
+ONLINE_AS               defb "as "                      ;
+MESSAGES                defb "000 messages"             ;
 MboxPort:               defb "8361"                     ;
 MboxPortLen:            equ $-MboxPort                  ;
 
@@ -460,8 +353,16 @@ MBOX_PROTOCOL_BYTES     defb $00, $01                   ;
 MBOX_APP_ID             defb $01                        ; nxtmail is app 1 in db
 MBOX_CMD                defb $01                        ;
 MBOX_NICK               defs 20                         ;
-
-RequestLen:             dw $0000                        ;
+MBOX_BLANK_NICK         defs 20,' '                     ;
+CONNECTED               defb 00                         ;
+MSG_COUNT               defb $0,$0                      ;
+MSG_COUNT_BUF           defs 6                          ;
+MSG_COUNT_ZERO          defb '0'                        ;
+SENDBUF                 defb 255                        ;
+REQUESTBUF              ds 256                          ;
+RequestLenAddr:         dw $0000                        ;
+RequestBufAddr:         dw $0000                        ;
+RequestLen              defb 0,0                        ;
 WordStart:              ds 5                            ;
 WordLen:                dw $0000                        ;
 ResponseStart:          dw $0000                        ;
@@ -473,81 +374,20 @@ MsgBuffer:              ds 256                          ;
 MsgBufferLen            equ $-MsgBuffer                 ;
 
 
-PrintLine               macro(X, Y, string, len)        ;
-                          push de                       ;
-                          push bc                       ;
-                          PrintAt(X,Y)                  ;
-                          ld de, string                 ; address of string
-                          ld bc, len                    ; length of string to print
-                          ei                            ;
-                          call ROM_PR_STRING            ;
-                          di                            ;
-                          pop bc                        ;
-                          pop de                        ;
-                          mend                          ;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "file.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "keys.asm"                      ;;;;;;;;;;;;;;;;;;;;;;
+include                 "zeus.asm"                      ; syntax highlighting;;;;;;;;;;;;;;;;;;;
 
-OpenOutputChannel       macro(Channel)                  ; Semantic macro to call a 48K ROM routine
-                          ld a, Channel                 ; 2 = upper screen
-                          ei                            ;
-                          call ROM_CHAN_OPEN            ;
-                          di                            ;
-                          mend                          ;
-
-PrintChar               macro(Char)                     ; Semantic macro to call a 48K ROM routine
-                          ei                            ;
-                          ld a, Char                    ;
-                          rst $10                       ; ROM 0010: THE 'PRINT A CHARACTER' RESTART
-                          di                            ;
-                          mend                          ;
-
-PrintAt                 macro(X, Y)                     ; Semantic macro to call a 48K ROM routine
-                          PrintChar(22)                 ;
-                          PrintChar(Y)                  ; X and Y are reversed order, i.e.
-                          PrintChar(X)                  ; PRINT AT Y, X
-                          mend                          ;
-
-Border                  macro(Colour)                   ; Semantic macro to call a 48K ROM routine
-        if Colour=0                                     ;
-                          xor a                         ;
-        else                                            ;
-                          ld a, Colour                  ;
-        endif                                           ;
-                          out ($FE), a                  ; Change border colour immediately
-        if Colour<>0                                    ;
-                          ld a, Colour*8                ;
-        endif                                           ;
-                          ld (23624), a                 ; Makes the ROM respect the new border colour
-                          mend                          ;
-
-esxDOS                  macro(Command)                  ; Semantic macro to call an esxDOS routine
-                          rst $08                       ; rst $08 is the instruction to call an esxDOS API function.
-                          noflow                        ; Zeus normally warns when data might be executed, suppress.
-                          db Command                    ; For esxDOS API calls, the data byte is the command number.
-                          mend                          ;
-
-M_P3DOS                 macro(Command, Bank)            ; Semantic macro to call an NextZXOS routine via the esxDOS API
-                          exx                           ; M_P3DOS: See NextZXOS_API.pdf page 37
-                          ld de, Command                ; DE=+3DOS/IDEDOS/NextZXOS call ID
-                          ld c, Bank                    ; C=RAM bank that needs to be paged (usually 7, but 0 for some calls)
-                          esxDOS($94)                   ; esxDOS API: M_P3DOS ($94)
-                          mend                          ;
-
-F_READ                  macro(Address)                  ; Semantic macro to call an esxDOS routine
-                          ; In: BC=bytes to read
-                          ld a, (FileHandle)            ; A=file handle
-                          ld ix, Address                ; IX=address
-                          esxDOS($9D)                   ;
-                          mend                          ;
-
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                        ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Raise an assembly-time error if the expression evaluates false
-zeusassert              zeusver>=78, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
+zeusassert              zeusver<=78, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
 ; zeusprint               zeusver                         ;
 ; Generate a NEX file                                   ; Instruct the .NEX loader to write the file handle to this
                         ;        output_z80 "NxtMail.z80",$FF40, Main ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -556,50 +396,3 @@ zeusassert              zeusver>=78, "Upgrade to Zeus v4.00 (TEST ONLY) or above
                         ; making generation a one-liner if you don't want loading screens
                         ; or external palette files. See History/Documentation in Zeus
                         ; for complete instructions and syntax.
-;
-                        zeussyntaxhighlight 0, $00,$FF,$11, true ; Set the token colour
-                        zeussyntaxhighlight 1, $FF,$00,$FF, false ; Set the identifier colour
-                        zeussyntaxhighlight 2, $00,$C0,$00, false ; Set the comment colour
-                        zeussyntaxhighlight 3, $0,$FF,$AA, false ; Set the constant colour
-                        zeussyntaxhighlight 4, $00,$FF,$00, true ; Set the line number colour
-                        zeussyntaxhighlight 5, $FF,$FF,$FF, true ; Set the marker colour
-                        zeussyntaxhighlight 6, $FF,$00,$FF ; Set the error colour
-                        zeussyntaxhighlight 7, $ff,$FF,$FF ; Set the margin data colour
-
-                        zeussyntaxhighlight 249, $00,$00,$A0 ; Set the "marked line" colour. [not used in this version]
-                        zeussyntaxhighlight 250, $ff,$ff,$00 ; Set the margin separator line colour
-                        zeussyntaxhighlight 251, $00,$00,$C8 ; Set the margin separator line2 colour
-                        zeussyntaxhighlight 252, $22,$22,$00 ; Set the current executing line background colour
-                        zeussyntaxhighlight 253, $22,$22,$aa ; Set the current editing line background colour
-                        zeussyntaxhighlight 254, $00,$00,$00 ; Set the margin background colour
-                        zeussyntaxhighlight 255, $00,$00,$00 ; Set the editor background colour
-
-
-; $028e.  5  KEY_SCAN   {001} the keyboard scanning subroutine
-; On returning from $028e KEY_SCAN the DE register and the Zero flag indicate
-; which keys are being pressed.
-;
-; . The Zero flag is reset if pressing more than two keys, or pressing two
-;  keys and neither is a shift key; DE identifies two of the keys.
-; . The Zero flag is set otherwise, and DE identifies the keys.
-; . If pressing just the two shift keys then DE = $2718.
-; . If pressing one shift key and one other key, then D identifies the shift
-;   key and E identifies the other key.
-; . If pressing any one key, then D=$ff and E identifies the key.
-; . If pressing no key, then DE=$ffff.
-;
-; The key codes returned by KEY_SCAN are shown below.
-;
-; KEY_SCAN key codes: hex, decimal, binary
-; ? hh dd bbbbbbbb   ? hh dd bbbbbbbb   ? hh dd bbbbbbbb   ? hh dd bbbbbbbb
-; 1 24 36 00100011   Q 25 37 00100101   A 26 38 00100110  CS 27 39 00100111
-; 2 1c 28 00011100   W 1d 29 00011101   S 1e 30 00011110   Z 1f 31 00011111
-; 3 14 20 00010100   E 15 21 00010101   D 16 22 00010110   X 17 23 00010111
-; 4 0c 12 00001100   R 0d 13 00001101   F 0e 14 00001110   C 0f 15 00001111
-; 5 04  4 00000100   T 05  5 00000101   G 06  6 00000110   V 07  7 00000111
-; 6 03  3 00000011   Y 02  2 00000010   H 01  1 00000001   B 00  0 00000000
-; 7 0b 11 00001011   U 0a 10 00001010   J 09  9 00001001   N 08  8 00001000
-; 8 13 19 00010011   I 12 18 00010010   K 11 17 00010001   M 10 16 00010000
-; 9 1b 27 00011011   O 1a 26 00011010   L 19 25 00011001  SS 18 24 00011000
-; 0 23 35 00100011   P 22 34 00100010  EN 21 33 00100001  SP 20 32 00100000
-; SS + 0 = delete

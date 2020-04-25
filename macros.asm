@@ -67,14 +67,14 @@ ErrorIfCarry            macro(ErrAddr)                  ;
                           jp nc, Continue               ;
                           ld hl, ErrAddr                ;
                           jp CheckESPTimeout.HandleError;
-Continue:                 
+Continue:
                           mend                          ;
 
 ErrorIfNonZero          macro(ErrAddr)                  ;
                           jp z, Continue                ;
                           ld hl, ErrAddr                ;
                           jp CheckESPTimeout.HandleError;
-Continue:                 
+Continue:
                           mend                          ;
 
 WriteString             macro(StringAddr, StringLen)    ;
@@ -148,4 +148,72 @@ WaitFrames              macro(FrameCount)               ;
                           ld b, FrameCount              ;
                           call WaitFramesProc           ;
                           mend                          ;
+
+PrintLine               macro(X, Y, string, len)        ;
+                          push de                       ;
+                          push bc                       ;
+                          PrintAt(X,Y)                  ;
+                          ld de, string                 ; address of string
+                          ld bc, len                    ; length of string to print
+                          ei                            ;
+                          call ROM_PR_STRING            ;
+                          di                            ;
+                          pop bc                        ;
+                          pop de                        ;
+                          mend                          ;
+
+OpenOutputChannel       macro(Channel)                  ; Semantic macro to call a 48K ROM routine
+                          ld a, Channel                 ; 2 = upper screen
+                          ei                            ;
+                          call ROM_CHAN_OPEN            ;
+                          di                            ;
+                          mend                          ;
+
+PrintChar               macro(Char)                     ; Semantic macro to call a 48K ROM routine
+                          ei                            ;
+                          ld a, Char                    ;
+                          rst $10                       ; ROM 0010: THE 'PRINT A CHARACTER' RESTART
+                          di                            ;
+                          mend                          ;
+
+PrintAt                 macro(X, Y)                     ; Semantic macro to call a 48K ROM routine
+                          PrintChar(22)                 ;
+                          PrintChar(Y)                  ; X and Y are reversed order, i.e.
+                          PrintChar(X)                  ; PRINT AT Y, X
+                          mend                          ;
+
+Border                  macro(Colour)                   ; Semantic macro to call a 48K ROM routine
+        if Colour=0                                     ;
+                          xor a                         ;
+        else                                            ;
+                          ld a, Colour                  ;
+        endif                                           ;
+                          out ($FE), a                  ; Change border colour immediately
+        if Colour<>0                                    ;
+                          ld a, Colour*8                ;
+        endif                                           ;
+                          ld (23624), a                 ; Makes the ROM respect the new border colour
+                          mend                          ;
+
+esxDOS                  macro(Command)                  ; Semantic macro to call an esxDOS routine
+                          rst $08                       ; rst $08 is the instruction to call an esxDOS API function.
+                          noflow                        ; Zeus normally warns when data might be executed, suppress.
+                          db Command                    ; For esxDOS API calls, the data byte is the command number.
+                          mend                          ;
+
+M_P3DOS                 macro(Command, Bank)            ; Semantic macro to call an NextZXOS routine via the esxDOS API
+                          exx                           ; M_P3DOS: See NextZXOS_API.pdf page 37
+                          ld de, Command                ; DE=+3DOS/IDEDOS/NextZXOS call ID
+                          ld c, Bank                    ; C=RAM bank that needs to be paged (usually 7, but 0 for some calls)
+                          esxDOS($94)                   ; esxDOS API: M_P3DOS ($94)
+                          mend                          ;
+
+;
+;F_READ                  macro(Address)                  ; Semantic macro to call an esxDOS routine
+;                          ; In: BC=bytes to read
+;                          ld a, (FileHandle)            ; A=file handle
+;                          ld ix, Address                ; IX=address
+;                          esxDOS($9D)                   ;
+;                          mend                          ;
+
 
