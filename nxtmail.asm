@@ -120,16 +120,18 @@ DisplayMenu             PrintLine(0,0,MENU_LINE_1,20)   ;
                         jp z, PrintConnected            ;
                         PrintLine(MboxHostLen+1,18,OFFLINE,7);
                         ret                             ;
-PrintConnected          ld hl,(MSG_COUNT)               ;
-                        inc hl                          ;
-                        dec hl                          ; trick for zero check
+PrintConnected          ld a,(MSG_COUNT)                ;
+                        ; inc hl                          ;
+                        ; dec hl                          ; trick for zero check
+                        cp 0                            ;
                         jp z, PrintZeroMessages         ; don't convert message count to ascii if zero (ldir uses len in BC)
+                        ld hl, (MSG_COUNT)
                         call ConvertWordToAsc           ; otherwise do
                         ld bc, (WordLen)                ;
                         ld de, MSG_COUNT_BUF            ;
                         ld hl, (WordStart)              ;
                         ldir                            ;
-                        PrintLine(0,19,MSG_COUNT_BUF,(WordLen)) ;
+                        PrintLine(0,19,MSG_COUNT_BUF,1) ;
                         jp PrintNick                    ;
 PrintZeroMessages       PrintLine(1,19,MSG_COUNT_ZERO,1);
 PrintNick               PrintLine(3,19,MBOX_BLANK_NICK,20) ;
@@ -200,7 +202,7 @@ BuildStandardRequest    ld (MBOX_CMD), a                ;
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ;
                         WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
-                        WriteString(USERIDBUF,20)           ; userid
+                        WriteString(USERIDBUF,20)       ; userid
                         ret                             ;
 
 ;
@@ -240,30 +242,38 @@ PrintNickname           ld a, 1                         ;
 ; size:  | 1      |
 ; field: | status |
 
-;                        ld a, MBOX_CMD_SEND_MESSAGE
-;                        call BuildStandardRequest       ; send:     0   1  1   1  98  97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114
-;                        ld de, REQUESTBUF               ; result: 201 115 116 117 97 114 116   0   0   0   0   0  0   0   0   0
-;                        ld h, 0                         ;
-;                        ld l, 2+1+1+20                  ; proto+cmd+app+userid
-;                        call MakeCIPSend                ;
-;                        call ProcessSendResponse         ;
-;                        ret                             ;
-;
 
 HandleSend              call HandleGetTargetNick        ;
                         call HandleGetMessageToSend     ;
                         ld a, MBOX_CMD_SEND_MESSAGE     ; send:   0 1 3 1 98 97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114 115 116 117 97 114 116 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 116 104 101 32 113 117 105 99 107 32 98 114 111 119 110 32 102 111 120 0
+                        call BuildSendMsgRequest        ;
                         ld h, 0                         ; result: 0
-                        ld l, 2+1+1+20                  ; proto+cmd+app+userid
-                        ld de, SENDBUF                  ;
+                        ld l, 2+1+1+20+20+200           ; proto+cmd+app+userid+targetnick+message
+                        ld de, REQUESTBUF               ;
                         call MakeCIPSend                ;
                         call ProcessSendResponse        ;
                         ret                             ;
 
-HandleGetTargetNick     nop                             ;
+BuildSendMsgRequest     ld (MBOX_CMD), a                ;
+                        ld de, REQUESTBUF               ; entire server request string
+                        WriteString(MBOX_PROTOCOL_BYTES, 2);
+                        WriteString(MBOX_CMD, 1)        ;
+                        WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
+                        WriteString(USERIDBUF,20)       ; userid
+                        WriteString(TARGET_NICK,20)     ;
+                        WriteString(OUT_MESSAGE,200)    ;
                         ret                             ;
 
-HandleGetMessageToSend  nop                             ;
+HandleGetTargetNick     ld de, TARGET_NICK              ;
+                        ld hl, DUMMY_NICK               ;
+                        ld bc, 20                       ;
+                        ldir                            ;
+                        ret                             ;
+
+HandleGetMessageToSend  ld de, OUT_MESSAGE              ;
+                        ld hl, DUMMY_MESSAGE            ;
+                        ld bc, 50                       ;
+                        ldir                            ;
                         ret                             ;
 
 ProcessSendResponse     nop                             ;
@@ -312,13 +322,14 @@ ProcessMsgCountResponse ld hl, (ResponseStart)          ;
                         ld a, (hl)                      ;
                         cp MBOX_STATUS_COUNT_OK         ;
                         jp nz, PrintProblem             ;
-                        PrintLine(0,16, OK, 2)          ;
                         inc hl                          ; move past status
                         ld a, (hl)                      ; get count
                         ld (MSG_COUNT), a               ; store
-                        inc hl                          ; get 2nd byte
-                        ld a, (hl)                      ;
-                        ld (MSG_COUNT+1), a             ; store 2nd
+                        ; inc hl                          ; get 2nd byte
+                        ; ld a, (hl)                      ;
+                        ; ld (MSG_COUNT+1), a             ; store 2nd
+
+                        PrintAt(15,15)                  ;
                         ld a, (MSG_COUNT)               ; pull 1st back
                         call PrintAHexNoSpace           ; display
                         ret                             ;
@@ -335,7 +346,7 @@ PROMPT                  defb "> "                       ;
 OK                      defb "OK"                       ;
 BAD_USER_MSG            defb "<no user registered>"     ;
 
-USERIDBUF                   defs 128, ' '                   ; our input buffer
+USERIDBUF               defs 128, ' '                   ; our input buffer
 BUFLEN                  defs 1                          ;
 FILEBUF                 defs 128                        ;
 
@@ -357,8 +368,10 @@ MBOX_BLANK_NICK         defs 20,' '                     ;
 CONNECTED               defb 00                         ;
 MSG_COUNT               defb $0,$0                      ;
 MSG_COUNT_BUF           defs 6                          ;
-MSG_COUNT_ZERO          defb '0'                        ;
+MSG_COUNT_ZERO          defb '9'                        ;
 SENDBUF                 defb 255                        ;
+TARGET_NICK             defs 20, 0                      ;
+OUT_MESSAGE             ds 200                          ;
 REQUESTBUF              ds 256                          ;
 RequestLenAddr:         dw $0000                        ;
 RequestBufAddr:         dw $0000                        ;
@@ -372,18 +385,19 @@ Buffer:                 ds 256                          ;
 BufferLen               equ $-Buffer                    ;
 MsgBuffer:              ds 256                          ;
 MsgBufferLen            equ $-MsgBuffer                 ;
+DUMMY_MESSAGE           defb "12345678901234567890123456789012345678901234567890";
+DUMMY_NICK              defb "stuart",0,0,0,0,0,0,0,0,0,0,0,0,0,0;
 
-
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "file.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "keys.asm"                      ;;;;;;;;;;;;;;;;;;;;;;
-include                 "zeus.asm"                      ; syntax highlighting;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "file.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "keys.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "zeus.asm"                      ; syntax highlighting;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 ; Raise an assembly-time error if the expression evaluates false
