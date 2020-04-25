@@ -76,14 +76,13 @@ Connect:
 ;
 ; MakeCIPSend
 ; Entry
-;   A = mbox cmd
+;   DE = request string: proto,cmd,app,userid,(optionally) nick or * or msg num, (optionally) msg
 ;   HL = request length (note: without the cipsend cr lf)
-;   DE = request string
 ; Exit
 ;   ResponseStart is pointer to buffer containing response
 ;
 
-MakeCIPSend:            ld (MBOX_CMD), a                ; which command are we sending?
+MakeCIPSend:
                         ld (RequestLen), hl             ; store length of the request we'll be sending to the server
                         inc hl                          ; add space for CR
                         inc hl                          ; add space for LF
@@ -101,9 +100,9 @@ PopulateCipSend         ld de, MsgBuffer                ; cipsend buffer
 ;                        PrintLine(0,13,MsgBuffer,13)    ;
 
 PopulateServerRequest   ld de, Buffer                   ; actual request for server
-                        WriteString(MBOX_PROTOCOL_BYTES, 2);
-                        WriteString(MBOX_CMD, 1)        ;
-                        WriteString(MBOX_APP_ID, 1)     ;
+;                        WriteString(MBOX_PROTOCOL_BYTES, 2);
+;                        WriteString(MBOX_CMD, 1)        ;
+;                        WriteString(MBOX_APP_ID, 1)     ;
                         WriteBuffer(RequestBufAddr, RequestLen) ;
                         WriteString(Cmd.Terminate, Cmd.TerminateLen); )
 SendRequest:

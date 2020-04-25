@@ -2,6 +2,17 @@
 ; NXTMAIL - mailer for ZX Spectrum Next
 ;   uses Next Mailbox Protocol 0.1
 
+; request:
+; protocol maj=0 min=1
+; 26 chars is min len of valid request
+;
+; pos:   |  0        | 2    |  3   |  4     | 25           | 46      |
+; size:  |  2        | 1    |  1   |  20    | 20           | 255     |
+; field: |  protocol | cmd  |  app | userid | param1:      | message |
+;        |           |      |      |        | nickname / * |         |
+;        |           |      |      |        | or msgid     |         |
+;
+
                         ;   zeusemulate "48K"
                         zeusemulate "Next", "RAW"       ; RAW prevents Zeus from adding some BASIC emulator-friendly
 
@@ -83,7 +94,6 @@ pend
 ; setup screen
 ;
 
-
 SetupScreen             Border(7)                       ; 7=white
                         OpenOutputChannel(2)            ; ROM: Open channel to upper screen (channel 2)
 SetLayer1_1             ld a, 1                         ; set layer via IDE_MODE using M_P3DOS (needs bank 7)
@@ -96,6 +106,9 @@ SetFontWidth            PrintChar(30)                   ; set char width in pixe
                         PrintChar(5)                    ; to 5 (51 chars wide)
                         ret                             ;
 
+;
+; display main menu
+;
 
 DisplayMenu             PrintLine(0,0,MENU_LINE_1,20)   ;
                         PrintLine(0,1,MENU_LINE_2,20)   ;
@@ -118,11 +131,10 @@ PrintConnected          ld hl,(MSG_COUNT)               ;
                         ldir                            ;
                         PrintLine(0,19,MSG_COUNT_BUF,(WordLen)) ;
                         jp PrintNick                    ;
-PrintZeroMessages       PrintLine(1,19,MSG_COUNT_ZERO,1)
+PrintZeroMessages       PrintLine(1,19,MSG_COUNT_ZERO,1);
 PrintNick               PrintLine(3,19,MBOX_BLANK_NICK,20) ;
                         PrintLine(3,19,MBOX_NICK,20)    ;
                         ret                             ;
-
 
 ;
 ; HandleMenuChoice
@@ -152,25 +164,12 @@ HandleRegister          PrintLine(0,5,REG_PROMPT, 26)   ;
                         PrintLine(0,8,OK, 2)            ;
                         call RegisterUserId             ;
                         PrintLine(0,8,OK, 2)            ;
-;                        jp HandleMenuChoice             ;
                         ret                             ;
 
 ;
 ; register
 ;
 
-; request:
-; protocol maj=0 min=1
-; 26 chars is min len of valid request
-;
-; pos:   |  0        | 2    |  3   |  4     | 25           | 46      |
-; size:  |  2        | 1    |  1   |  20    | 20           | 255     |
-; field: |  protocol | cmd  |  app | userid | param1:      | message |
-;        |           |      |      |        | nickname / * |         |
-;        |           |      |      |        | or msgid     |         |
-;
-; cmds
-;
 ; 1. register user for app
 ;
 ; response:
@@ -180,15 +179,29 @@ HandleRegister          PrintLine(0,5,REG_PROMPT, 26)   ;
 ; field:     | status  | nickname       |
 ; condition: |         | status=101/201 |
 
-RegisterUserId:         
-                        ld a, MBOX_CMD_REGISTER         ; send:     0   1  1   1  98  97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114
-                        ld h, 0                         ; result: 201 115 116 117 97 114 116   0   0   0   0   0  0   0   0   0
+RegisterUserId:         ld a, MBOX_CMD_REGISTER         ;
+                        call BuildStandardRequest       ; send:     0   1  1   1  98  97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114
+                        ld de, REQUESTBUF               ; result: 201 115 116 117 97 114 116   0   0   0   0   0  0   0   0   0
+                        ld h, 0                         ;
                         ld l, 2+1+1+20                  ; proto+cmd+app+userid
-                        ld de, INBUF                    ;
                         call MakeCIPSend                ;
                         call ProcessRegResponse         ;
                         ret                             ;
-
+;
+; BuildStandardRequest
+;
+; ENTRY
+;  A = MBOX CMD
+; EXIT
+;  REQUESTBUF is populated ready for CIPSEND
+;
+BuildStandardRequest    ld (MBOX_CMD), a                ;
+                        ld de, REQUESTBUF               ; entire server request string
+                        WriteString(MBOX_PROTOCOL_BYTES, 2);
+                        WriteString(MBOX_CMD, 1)        ;
+                        WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
+                        WriteString(USERIDBUF,20)           ; userid
+                        ret                             ;
 
 ;
 ; process registration response
@@ -209,9 +222,8 @@ PrintNickname           ld a, 1                         ;
                         ld de, MBOX_NICK                ;
                         ld hl, (ResponseStart)          ;
                         inc hl                          ; move past status
-                        ld bc, 20                       ; userids are 20
+                        ld bc, 20                       ; nicks/userids are 20
                         ldir                            ;
-                        ; PrintLine(30,0,MBOX_NICK,20)    ;
                         call SaveFile                   ;
                         ret                             ;
 
@@ -220,19 +232,64 @@ PrintNickname           ld a, 1                         ;
 ; handle send message
 ;
 
-HandleSend              PrintAt(0,4)                    ;
-                        PrintChar(50)                   ;
-                        ;                       jp HandleMenuChoice             ;
+; 5. sendMessage
+;
+; response:
+;
+; pos:   | 0      |
+; size:  | 1      |
+; field: | status |
+
+;                        ld a, MBOX_CMD_SEND_MESSAGE
+;                        call BuildStandardRequest       ; send:     0   1  1   1  98  97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114
+;                        ld de, REQUESTBUF               ; result: 201 115 116 117 97 114 116   0   0   0   0   0  0   0   0   0
+;                        ld h, 0                         ;
+;                        ld l, 2+1+1+20                  ; proto+cmd+app+userid
+;                        call MakeCIPSend                ;
+;                        call ProcessSendResponse         ;
+;                        ret                             ;
+;
+
+HandleSend              call HandleGetTargetNick        ;
+                        call HandleGetMessageToSend     ;
+                        ld a, MBOX_CMD_SEND_MESSAGE     ; send:   0 1 3 1 98 97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114 115 116 117 97 114 116 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 116 104 101 32 113 117 105 99 107 32 98 114 111 119 110 32 102 111 120 0
+                        ld h, 0                         ; result: 0
+                        ld l, 2+1+1+20                  ; proto+cmd+app+userid
+                        ld de, SENDBUF                  ;
+                        call MakeCIPSend                ;
+                        call ProcessSendResponse        ;
+                        ret                             ;
+
+HandleGetTargetNick     nop                             ;
+                        ret                             ;
+
+HandleGetMessageToSend  nop                             ;
+                        ret                             ;
+
+ProcessSendResponse     nop                             ;
                         ret                             ;
 
 ;
-; handle iew message
+; handle view message
 ;
+
+; 4. getMessage
+;
+; response:
+;
+; pos:      | 0      | 1          | 2          |
+; size:     | 1      | 1          | n          |
+; field:    | status | messagelen | message    |
+; condition |        | status=203 | status=203 |
 
 HandleViewMessage       PrintAt(0,4)                    ;
                         PrintChar(50)                   ;
-                        ;                       jp HandleMenuChoice             ;
                         ret                             ;
+
+;
+; fetch number of messages for user
+;
+
 ; 3. get message count
 ;
 ; response:
@@ -242,10 +299,11 @@ HandleViewMessage       PrintAt(0,4)                    ;
 ; field:    | status | messageCount |
 ; condition |        | status=202   |
 
-HandleCount             ld a, MBOX_CMD_MESSAGE_COUNT    ; send:     0 1 4 1 98 97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114
-                        ld h, 0                         ; result: 202 3
+HandleCount             ld a, MBOX_CMD_MESSAGE_COUNT    ;
+                        call BuildStandardRequest       ; send:     0   1  1   1  98  97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114
+                        ld de, REQUESTBUF               ; result: 201 115 116 117 97 114 116   0   0   0   0   0  0   0   0   0
+                        ld h, 0                         ;
                         ld l, 2+1+1+20                  ; proto+cmd+app+userid
-                        ld de, INBUF                    ;
                         call MakeCIPSend                ;
                         call ProcessMsgCountResponse    ;
                         ret                             ;
@@ -277,7 +335,7 @@ PROMPT                  defb "> "                       ;
 OK                      defb "OK"                       ;
 BAD_USER_MSG            defb "<no user registered>"     ;
 
-INBUF                   defs 128, ' '                   ; our input buffer
+USERIDBUF                   defs 128, ' '                   ; our input buffer
 BUFLEN                  defs 1                          ;
 FILEBUF                 defs 128                        ;
 
@@ -299,7 +357,9 @@ MBOX_BLANK_NICK         defs 20,' '                     ;
 CONNECTED               defb 00                         ;
 MSG_COUNT               defb $0,$0                      ;
 MSG_COUNT_BUF           defs 6                          ;
-MSG_COUNT_ZERO          defb '0'
+MSG_COUNT_ZERO          defb '0'                        ;
+SENDBUF                 defb 255                        ;
+REQUESTBUF              ds 256                          ;
 RequestLenAddr:         dw $0000                        ;
 RequestBufAddr:         dw $0000                        ;
 RequestLen              defb 0,0                        ;
@@ -314,16 +374,16 @@ MsgBuffer:              ds 256                          ;
 MsgBufferLen            equ $-MsgBuffer                 ;
 
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "file.asm"                      ;;;;;;;;;;;;;
-include                 "keys.asm"                      ;;;;;;;;;
-include                 "zeus.asm"                      ; syntax highlighting;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "file.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "keys.asm"                      ;;;;;;;;;;;;;;;;;;;;;;
+include                 "zeus.asm"                      ; syntax highlighting;;;;;;;;;;;;;;;;;;;
 
 
 ; Raise an assembly-time error if the expression evaluates false
