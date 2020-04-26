@@ -15,10 +15,9 @@
 
                         ;   zeusemulate "48K"
                         zeusemulate "Next", "RAW"       ; RAW prevents Zeus from adding some BASIC emulator-friendly
-
 zoLogicOperatorsHighPri = false                         ; data like the stack and system variables. Not needed because
-zoSupportStringEscapes  = true                          ;
-zxAllowFloatingLabels   = false                         ; this only runs on the Next, and everything is already present.
+zoSupportStringEscapes  = true                          ; this only runs on the Next, and everything is already present.
+zxAllowFloatingLabels   = false                         ;
 
 ; NextZXOS APIs
 IDE_MODE                equ $01d5                       ; used to set the characters per line
@@ -166,6 +165,7 @@ HandleRegister          PrintLine(0,5,REG_PROMPT, 26)   ;
                         PrintLine(0,8,OK, 2)            ;
                         call RegisterUserId             ;
                         PrintLine(0,8,OK, 2)            ;
+                        call PressKeyToContinue         ;
                         ret                             ;
 
 ;
@@ -188,21 +188,6 @@ RegisterUserId:         ld a, MBOX_CMD_REGISTER         ;
                         ld l, 2+1+1+20                  ; proto+cmd+app+userid
                         call MakeCIPSend                ;
                         call ProcessRegResponse         ;
-                        ret                             ;
-;
-; BuildStandardRequest
-;
-; ENTRY
-;  A = MBOX CMD
-; EXIT
-;  REQUESTBUF is populated ready for CIPSEND
-;
-BuildStandardRequest    ld (MBOX_CMD), a                ;
-                        ld de, REQUESTBUF               ; entire server request string
-                        WriteString(MBOX_PROTOCOL_BYTES, 2);
-                        WriteString(MBOX_CMD, 1)        ;
-                        WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
-                        WriteString(USERIDBUF,20)       ; userid
                         ret                             ;
 
 ;
@@ -263,7 +248,12 @@ LenIsMax                ld a, 20                        ;
 ; field: | status |
 
 
-HandleSend              call HandleGetTargetNick        ;
+HandleSend              call WipeTargetNick             ;
+                        call HandleGetTargetNick        ;
+                        call TerminateTargetNick        ;
+                        call HandleCheckNick            ;
+                        jp z, HandleSend                ;
+
                         call HandleGetMessageToSend     ;
                         ld a, MBOX_CMD_SEND_MESSAGE     ; send:   0 1 3 1 98 97 104 111 106 115 105 98 111 102 108 111 98 117 116 115 117 106 97 114 115 116 117 97 114 116 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 116 104 101 32 113 117 105 99 107 32 98 114 111 119 110 32 102 111 120 0
                         call BuildSendMsgRequest        ;
@@ -274,21 +264,113 @@ HandleSend              call HandleGetTargetNick        ;
                         call ProcessSendResponse        ;
                         ret                             ;
 
+TerminateTargetNick     ld hl, TARGET_NICK_BUF          ;
+                        ld a, ' '                       ;
+                        ld bc, 20                       ;
+                        cpir                            ;
+                        jp nz,NoSpaces                  ;
+                        dec hl                          ; found a space so back up
+                        inc c                           ; including counter
+                        ld d,h                          ; copy remaining counter's worth of $0s over the rest of the nick
+                        ld e,l                          ;
+                        inc de                          ;
+                        ld (hl), 0                      ;
+                        ldir                            ;
+NoSpaces                ret                             ;
+
+WipeTargetNick          ld hl, TARGET_NICK_BUF          ;
+                        ld d,h                          ;
+                        ld e,l                          ;
+                        inc de                          ;
+                        ld (hl), ' '                    ;
+                        ld bc, 20                       ;
+                        ldir                            ;
+                        ret                             ;
+
 BuildSendMsgRequest     ld (MBOX_CMD), a                ;
                         ld de, REQUESTBUF               ; entire server request string
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ;
                         WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
                         WriteString(USERIDBUF,20)       ; userid
-                        WriteString(TARGET_NICK,20)     ;
+                        WriteString(TARGET_NICK_BUF,20)     ;
                         WriteString(OUT_MESSAGE,200)    ;
                         ret                             ;
 
-HandleGetTargetNick     ld de, TARGET_NICK              ;
-                        ld hl, DUMMY_NICK               ;
-                        ld bc, 20                       ;
-                        ldir                            ;
-                        ret                             ;
+HandleGetTargetNick     ld b, 20                        ; collect 20 chars for userId
+                        ld c, $24                       ; used to debounce
+                        ld hl, TARGET_NICK_BUF          ; which buffer to store chars
+                        PrintLine(0,5,NICK_PROMPT, 37)  ;
+SendInputLoop           PrintLine(3,6,TARGET_NICK_BUF, 20) ; show current buffer contents
+                        push hl                         ;
+                        push bc                         ;
+                        ei                              ;
+                        call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
+                        di                              ;
+                        pop bc                          ;
+                        pop hl                          ;
+                        ld a,d                          ; do we have a key modifier? (ss CS etc)
+                        cp $ff                          ;
+                        jp nz, SendShiftCheck           ; yes
+                        jp SendNoShiftPressed           ; no
+
+SendShiftCheck          cp $27                          ; $27=CS - check if caps shift is pressed (CS + 0 = delete)
+                        jp nz, SendNoShiftPressed       ; no
+                        ld a,e                          ; yes. check 2nd char
+                        cp $23                          ; $23=0 - is 2nd char 0 key? (CS + 0 = delete)
+                        jp z, SendDelete                ; yes
+                        cp $20                          ; no. is 2nd char SPACE? (CS+SP=break)
+                        ret z                           ; yes back to menu
+                        jp nz, SendInputLoop            ; no. collect another char
+
+SendDelete              push af                         ; yes
+                        ld a,b                          ; let's see if we've got any chars to delete
+                        cp 0                            ;
+                        jp z, SendInputLoop             ; no. collect another char
+                        pop af                          ; yes
+                        cp c                            ; is this key same as last keypress?
+                        jp z, SendInputLoop             ; yes. = debounce
+                        ld c, a                         ; no. store key for next debounce check
+                        ld (hl), ' '                    ; blank current char
+                        dec hl                          ; and reposition buffer pointer
+                        inc b                           ; and collected char count
+                        jp SendInputLoop                ; collect another char
+
+SendNoShiftPressed      ld a,e                          ; do we have a key pressed?
+                        cp $ff                          ;
+                        jp z, SendNoKeyPressed          ; no
+                        cp $21                          ; enter?
+                        ret z                           ;
+                        push bc                         ; we have a keypress without shift
+                        push hl                         ;
+                        ld b, 0                         ;
+                        ld c, a                         ;  bc = keycode value
+                        ld hl, ROM_KEYTABLE             ;  hl = code to ascii lookup table
+                        add hl, bc                      ;  find ascii given keycode
+                        ld a, (hl)                      ;
+                        pop hl                          ;
+                        pop bc                          ;
+                        cp $20                          ; check if >= 32 (ascii space)
+                        jp c,SendInputLoop              ; no, ignore
+                        cp $7f                          ; check if <= 126 (ascii ~)
+                        jp nc,SendInputLoop             ; no, ignore
+                        cp c                            ; does key = last keypress?
+                        jp z, SendInputLoop             ; yes - debounce
+                        ld c, a                         ; no - store char in c for next check
+                        ld (hl),a                       ; no - store char in buffer
+                        inc hl                          ;
+                        dec b                           ; one less char to collect
+                        ld a,b                          ;
+                        cp 0                            ; collected all chars?
+                        ld a, c                         ;    (restore after the count check)
+                        ret z                           ; yes
+                        jp SendInputLoop                ; no
+
+SendNoKeyPressed        cp c                            ; is current keycode same as last?
+                        jp z, SendInputLoop             ; yes - just loop again
+                        ld c, a                         ; no, update c to show change
+                        jp SendInputLoop                ;
+
 
 HandleGetMessageToSend  ld de, OUT_MESSAGE              ;
                         ld hl, DUMMY_MESSAGE            ;
@@ -296,10 +378,61 @@ HandleGetMessageToSend  ld de, OUT_MESSAGE              ;
                         ldir                            ;
                         ret                             ;
 
-ProcessSendResponse     nop                             ;
+ProcessSendResponse     ld hl, (ResponseStart)          ;
+                        ld a, (hl)                      ;
+                        cp MBOX_STATUS_OK               ;
+                        jp nz, PrintProblemSend         ;
+                        PrintLine(15, 15, OK, 2)        ;
+                        call PressKeyToContinue         ;
+                        ret                             ;
+PrintProblemSend        PrintLine(15,15, MSG_ERR_SENDING,21);
+                        call PressKeyToContinue         ;
                         ret                             ;
 
 ;
+; handle check registered nickname
+;
+; EXIT
+;    Z set if nick is registered with nextmail otherwise Z is unset
+;
+; 2. check nickname registered for app
+;
+; response:
+;
+; pos:   | 0      |
+; size:  | 1      |
+; field: | status |
+;
+
+HandleCheckNick         ld a, MBOX_CMD_CHECK_REG_NICK   ; send:
+                        call BuildNickRequest           ;
+                        ld h, 0                         ; result: 0
+                        ld l, 2+1+1+20+20               ; proto+cmd+app+userid+nick
+                        ld de, REQUESTBUF               ;
+                        call MakeCIPSend                ;
+                        call ProcessNickResponse        ;
+                        ret                             ;
+
+BuildNickRequest        ld (MBOX_CMD), a                ;
+                        ld de, REQUESTBUF               ; entire server request string
+                        WriteString(MBOX_PROTOCOL_BYTES, 2);
+                        WriteString(MBOX_CMD, 1)        ;
+                        WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
+                        WriteString(USERIDBUF,20)       ; userid
+                        WriteString(TARGET_NICK_BUF,20) ;
+                        ret                             ;
+;
+ProcessNickResponse     ld hl, (ResponseStart)          ;
+                        ld a, (hl)                      ;
+                        cp MBOX_STATUS_UNREG_NICK       ;
+                        jp z, RegisteredNick            ;
+                        ret                             ; Z unset
+RegisteredNick          PrintLine(0,16,MSG_UNREG_NICK, 33);
+                        call PressKeyToContinue         ;
+                        ld a, 0                         ;
+                        or a                            ; Z set
+                        ret                             ;
+
 ; handle view message
 ;
 
@@ -347,11 +480,12 @@ ProcessGetResponse      ld hl, (ResponseStart)          ;  status byte
                         ld bc, (IN_MSG_LEN)             ;
                         ldir                            ;
                         PrintLineLenVar(0,10,IN_MESSAGE,IN_MSG_LEN);
-                        halt                            ;
-
+                        call PressKeyToContinue         ;                        ;
                         ret                             ;
+
 PrintBadMsgId           PrintLine(0,15,BAD_MSG_ID,18)   ;
-                        halt                            ;
+                        call PressKeyToContinue         ;                        ;
+                        ret                             ;
 
 ;
 ; fetch number of messages for user
@@ -393,6 +527,33 @@ ProcessMsgCountResponse ld hl, (ResponseStart)          ;
 PrintProblem            PrintLine(6,19,BAD_USER_MSG, 20) ;
                         ret                             ;
 
+;
+; BuildStandardRequest
+;
+; ENTRY
+;  A = MBOX CMD
+; EXIT
+;  REQUESTBUF is populated ready for CIPSEND
+;
+BuildStandardRequest    ld (MBOX_CMD), a                ;
+                        ld de, REQUESTBUF               ; entire server request string
+                        WriteString(MBOX_PROTOCOL_BYTES, 2);
+                        WriteString(MBOX_CMD, 1)        ;
+                        WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
+                        WriteString(USERIDBUF,20)       ; userid
+                        ret                             ;
+
+PressKeyToContinue      PrintLine(0,17, MSG_PRESS_KEY, 25);
+KeyLoop                 ei                              ;
+                        call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
+                        di                              ;
+                        ld a,d                          ; do we have a key modifier? (ss CS etc)
+                        cp $ff                          ;
+                        ret nz                          ;
+                        ld a,e                          ;
+                        cp $ff                          ;
+                        ret nz                          ;
+                        jp KeyLoop                      ;
 
 MENU_LINE_1             defb "1. Register userId  "     ;
 MENU_LINE_2             defb "2. Send message     "     ;
@@ -421,12 +582,12 @@ MBOX_PROTOCOL_BYTES     defb $00, $01                   ;
 MBOX_APP_ID             defb $01                        ; nxtmail is app 1 in db
 MBOX_CMD                defb $01                        ;
 MBOX_NICK               defs 20                         ;
-MBOX_NICK_LEN           defb 00,00                         ;
+MBOX_NICK_LEN           defb 00,00                      ;
 MBOX_BLANK_NICK         defs 20,' '                     ;
-CONNECTED               defb 00                      ;
+CONNECTED               defb 00                         ;
 MSG_COUNT               defb $0,$0                      ;
 MSG_COUNT_BUF           defs 6                          ;
-MSG_COUNT_ZERO          defb '9'                        ;
+MSG_COUNT_ZERO          defb '0'                        ;
 SENDBUF                 defb 255                        ;
 TARGET_NICK             defs 20, 0                      ;
 OUT_MESSAGE             ds 200                          ;
@@ -445,21 +606,27 @@ MsgBuffer:              ds 256                          ;
 MsgBufferLen            equ $-MsgBuffer                 ;
 DUMMY_MESSAGE           defb "12345678901234567890123456789012345678901234567890";
 DUMMY_NICK              defb "stuart",0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+TARGET_NICK_BUF         defs 20,' '                     ;
+TARGET_NICK_LEN         defb 0,0                        ;
 MBOX_MSG_ID             defb 0                          ;
 IN_MSG_LEN              defb 0,0                        ;   2 because we'll point BC at it for ldir
 IN_MESSAGE              defs 200                        ;
 BAD_MSG_ID              defb "bad message number"       ;
+MSG_ERR_SENDING         defb "Error sending message"    ;
+MSG_PRESS_KEY           defb "Press any key to continue";
+MSG_UNREG_NICK          defb "Nick is unregistered with NxtMail";
+NICK_PROMPT             defb "To nickname: (20 chars. Enter to end)" ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "file.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "keys.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "zeus.asm"                      ; syntax highlighting;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "file.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "keys.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "zeus.asm"                      ; syntax highlighting;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 ; Raise an assembly-time error if the expression evaluates false

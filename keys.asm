@@ -26,7 +26,8 @@
 ; 8 13 19 00010011   I 12 18 00010010   K 11 17 00010001   M 10 16 00010000
 ; 9 1b 27 00011011   O 1a 26 00011010   L 19 25 00011001  SS 18 24 00011000
 ; 0 23 35 00100011   P 22 34 00100010  EN 21 33 00100001  SP 20 32 00100000
-; SS + 0 = delete
+;
+; SS + 0 = delete    SS+SP = break
 
 ;
 ; handle user id input
@@ -34,8 +35,8 @@
 
 HandleUserIdInput       ld b, 20                        ; collect 20 chars for userId
                         ld c, $24                       ; used to debounce
-                        ld hl, USERIDBUF                    ; which buffer to store chars
-InputLoop               PrintLine(3,5,USERIDBUF, 36)        ; show current buffer contents   TODO restore to 51
+                        ld hl, USERIDBUF                ; which buffer to store chars
+InputLoop               PrintLine(3,5,USERIDBUF, 20)    ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
                         call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
