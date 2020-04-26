@@ -120,12 +120,12 @@ DisplayMenu             PrintLine(0,0,MENU_LINE_1,20)   ;
                         jp z, PrintConnected            ;
                         PrintLine(MboxHostLen+1,18,OFFLINE,7);
                         ret                             ;
-PrintConnected          ld a,(MSG_COUNT)                ;
-                        ; inc hl                          ;
-                        ; dec hl                          ; trick for zero check
-                        cp 0                            ;
+PrintConnected          ld hl,(MSG_COUNT)               ;
+                        inc (hl)                        ;
+                        dec (hl)                        ; trick for zero check
+                        cp 0                            ; is message count 0?
                         jp z, PrintZeroMessages         ; don't convert message count to ascii if zero (ldir uses len in BC)
-                        ld hl, (MSG_COUNT)
+                        ld hl, (MSG_COUNT)              ;
                         call ConvertWordToAsc           ; otherwise do
                         ld bc, (WordLen)                ;
                         ld de, MSG_COUNT_BUF            ;
@@ -135,7 +135,7 @@ PrintConnected          ld a,(MSG_COUNT)                ;
                         jp PrintNick                    ;
 PrintZeroMessages       PrintLine(1,19,MSG_COUNT_ZERO,1);
 PrintNick               PrintLine(3,19,MBOX_BLANK_NICK,20) ;
-                        PrintLine(3,19,MBOX_NICK,20)    ;
+                        PrintLine(3,19,MBOX_NICK,6)    ;
                         ret                             ;
 
 ;
@@ -292,9 +292,46 @@ ProcessSendResponse     nop                             ;
 ; field:    | status | messagelen | message    |
 ; condition |        | status=203 | status=203 |
 
-HandleViewMessage       PrintAt(0,4)                    ;
-                        PrintChar(50)                   ;
+HandleViewMessage       call HandleGetMsgId             ;
+                        ld a, MBOX_CMD_GET_MESSAGE      ; send:
+                        call BuildGetMsgRequest         ;
+                        ld h, 0                         ; result: 0
+                        ld l, 2+1+1+20+1                ; proto+cmd+app+userid+1
+                        ld de, REQUESTBUF               ;
+                        call MakeCIPSend                ;
+                        call ProcessGetResponse         ;
                         ret                             ;
+
+BuildGetMsgRequest      ld (MBOX_CMD), a                ;
+                        ld de, REQUESTBUF               ; entire server request string
+                        WriteString(MBOX_PROTOCOL_BYTES, 2);
+                        WriteString(MBOX_CMD, 1)        ;
+                        WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
+                        WriteString(USERIDBUF,20)       ; userid
+                        WriteString(MBOX_MSG_ID,1)      ;
+                        ret                             ;
+
+HandleGetMsgId          ld a, 1                         ;  TODO get user input
+                        ld (MBOX_MSG_ID), a             ;
+                        ret                             ;
+
+ProcessGetResponse      ld hl, (ResponseStart)          ;  status byte
+                        ld a, (hl)                      ;
+                        cp MBOX_STATUS_GET_MSG_OK       ; is it ok?
+                        jp nz, PrintBadMsgId            ; no - show error
+                        inc hl                          ; yes - move past status byte
+                        ld a, (hl)                      ; this is len
+                        ld (IN_MSG_LEN), a              ;
+                        ld de, IN_MESSAGE               ; populate in_messge with contents of response
+                        inc hl                          ; move past len byte into start of msg
+                        ld bc, (IN_MSG_LEN)             ;
+                        ldir                            ;
+                        PrintLineLenVar(0,10,IN_MESSAGE,IN_MSG_LEN);
+                        halt                            ;
+
+                        ret                             ;
+PrintBadMsgId           PrintLine(0,15,BAD_MSG_ID,18)   ;
+                        halt                            ;
 
 ;
 ; fetch number of messages for user
@@ -387,17 +424,21 @@ MsgBuffer:              ds 256                          ;
 MsgBufferLen            equ $-MsgBuffer                 ;
 DUMMY_MESSAGE           defb "12345678901234567890123456789012345678901234567890";
 DUMMY_NICK              defb "stuart",0,0,0,0,0,0,0,0,0,0,0,0,0,0;
+MBOX_MSG_ID             defb 0                          ;
+IN_MSG_LEN              defb 0,0                        ;   2 because we'll point BC at it for ldir
+IN_MESSAGE              defs 200                        ;
+BAD_MSG_ID              defb "bad message number"       ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "file.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "keys.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "zeus.asm"                      ; syntax highlighting;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "file.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "keys.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "zeus.asm"                      ; syntax highlighting;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 ; Raise an assembly-time error if the expression evaluates false
