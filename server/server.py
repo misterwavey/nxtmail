@@ -83,8 +83,8 @@ def handle_request(request, addr, db):
 
     elif cmd == CMD_SEND_MESSAGE:
       nickname = parse_param_as_nickname(request)
-      if len(request) > 45:
-        message = request[45:301].decode()
+      if len(request) > 44:
+        message = request[44:301].decode()
         printable = set(string.printable) #ascii only
         message = "".join(filter(lambda x: x in printable, message))
         return handle_send(appId, userId, nickname, message, addr, db)
@@ -114,7 +114,7 @@ def handle_request(request, addr, db):
 
 def parse_param_as_nickname(request):
   if len(request) > 24:
-    nickname = request[24:45].decode()
+    nickname = request[24:43].decode()
     printable = set(string.printable) #ascii only
     nickname = "".join(filter(lambda x: x in printable, nickname))
     return nickname
