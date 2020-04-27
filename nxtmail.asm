@@ -307,7 +307,7 @@ HandleGetTargetNick     ld b, 20                        ; collect 20 chars for u
                         ld c, $24                       ; used to debounce
                         ld hl, TARGET_NICK_BUF          ; which buffer to store chars
                         PrintLine(0,5,NICK_PROMPT, 37)  ;
-SendInputLoop           PrintLine(3,6,TARGET_NICK_BUF, 20) ; show current buffer contents
+GetNickInputLoop        PrintLine(3,6,TARGET_NICK_BUF, 20) ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
                         ei                              ;
@@ -317,35 +317,35 @@ SendInputLoop           PrintLine(3,6,TARGET_NICK_BUF, 20) ; show current buffer
                         pop hl                          ;
                         ld a,d                          ; do we have a key modifier? (ss CS etc)
                         cp $ff                          ;
-                        jp nz, SendShiftCheck           ; yes
-                        jp SendNoShiftPressed           ; no
+                        jp nz, GetNickShiftCheck        ; yes
+                        jp GetNickNoShiftPressed        ; no
 
-SendShiftCheck          cp $27                          ; $27=CS - check if caps shift is pressed (CS + 0 = delete)
-                        jp nz, SendNoShiftPressed       ; no
+GetNickShiftCheck       cp $27                          ; $27=CS - check if caps shift is pressed (CS + 0 = delete)
+                        jp nz, GetNickNoShiftPressed    ; no
                         ld a,e                          ; yes. check 2nd char
                         cp $23                          ; $23=0 - is 2nd char 0 key? (CS + 0 = delete)
-                        jp z, SendDelete                ; yes
+                        jp z, GetNickDelete             ; yes
                         cp $20                          ; no. is 2nd char SPACE? (CS+SP=break)
                         scf                             ; yes: set carry for return status
                         ret z                           ; back to menu
-                        jp nz, SendInputLoop            ; no. collect another char
+                        jp nz, GetNickInputLoop         ; no. collect another char
 
-SendDelete              push af                         ; yes
+GetNickDelete           push af                         ; yes
                         ld a,b                          ; let's see if we've got any chars to delete
                         cp 0                            ;
-                        jp z, SendInputLoop             ; no. collect another char
+                        jp z, GetNickInputLoop          ; no. collect another char
                         pop af                          ; yes
                         cp c                            ; is this key same as last keypress?
-                        jp z, SendInputLoop             ; yes. = debounce
+                        jp z, GetNickInputLoop          ; yes. = debounce
                         ld c, a                         ; no. store key for next debounce check
                         ld (hl), ' '                    ; blank current char
                         dec hl                          ; and reposition buffer pointer
                         inc b                           ; and collected char count
-                        jp SendInputLoop                ; collect another char
+                        jp GetNickInputLoop             ; collect another char
 
-SendNoShiftPressed      ld a,e                          ; do we have a key pressed?
+GetNickNoShiftPressed   ld a,e                          ; do we have a key pressed?
                         cp $ff                          ;
-                        jp z, SendNoKeyPressed          ; no
+                        jp z, GetNickNoKeyPressed       ; no
                         cp $21                          ; enter?
                         ret z                           ;
                         push bc                         ; we have a keypress without shift
@@ -358,11 +358,11 @@ SendNoShiftPressed      ld a,e                          ; do we have a key press
                         pop hl                          ;
                         pop bc                          ;
                         cp $20                          ; check if >= 32 (ascii space)
-                        jp c,SendInputLoop              ; no, ignore
+                        jp c,GetNickInputLoop           ; no, ignore
                         cp $7f                          ; check if <= 126 (ascii ~)
-                        jp nc,SendInputLoop             ; no, ignore
+                        jp nc,GetNickInputLoop          ; no, ignore
                         cp c                            ; does key = last keypress?
-                        jp z, SendInputLoop             ; yes - debounce
+                        jp z, GetNickInputLoop          ; yes - debounce
                         ld c, a                         ; no - store char in c for next check
                         ld (hl),a                       ; no - store char in buffer
                         inc hl                          ;
@@ -372,19 +372,94 @@ SendNoShiftPressed      ld a,e                          ; do we have a key press
                         ld a, c                         ;    (restore after the count check)
                         ccf                             ; clear c for return status
                         ret z                           ; yes
-                        jp SendInputLoop                ; no
+                        jp GetNickInputLoop             ; no
 
-SendNoKeyPressed        cp c                            ; is current keycode same as last?
-                        jp z, SendInputLoop             ; yes - just loop again
+GetNickNoKeyPressed     cp c                            ; is current keycode same as last?
+                        jp z, GetNickInputLoop          ; yes - just loop again
                         ld c, a                         ; no, update c to show change
-                        jp SendInputLoop                ;
+                        jp GetNickInputLoop             ;
 
+HandleGetMessageToSend  ld b, 200                       ; collect 20 chars for userId
+                        ld c, $24                       ; used to debounce
+                        ld hl, OUT_MESSAGE              ; which buffer to store chars
+                        PrintLine(0,5,MSG_GET_MSG_PROMPT, MSG_GET_MSG_PROMPT_LEN) ;
+GetMsgInputLoop         PrintLine(3,6,OUT_MESSAGE, 20)  ; show current buffer contents
+                        push hl                         ;
+                        push bc                         ;
+                        ei                              ;
+                        call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
+                        di                              ;
+                        pop bc                          ;
+                        pop hl                          ;
+                        ld a,d                          ; do we have a key modifier? (ss CS etc)
+                        cp $ff                          ;
+                        jp nz, GetMsgShiftCheck         ; yes
+                        jp GetMsgNoShiftPressed         ; no
 
-HandleGetMessageToSend  ld de, OUT_MESSAGE              ;
-                        ld hl, DUMMY_MESSAGE            ;
-                        ld bc, 50                       ;
-                        ldir                            ;
-                        ret                             ;
+GetMsgShiftCheck        cp $27                          ; $27=CS - check if caps shift is pressed (CS + 0 = delete)
+                        jp nz, GetMsgNoShiftPressed     ; no
+                        ld a,e                          ; yes. check 2nd char
+                        cp $23                          ; $23=0 - is 2nd char 0 key? (CS + 0 = delete)
+                        jp z, GetMsgDelete              ; yes
+                        cp $20                          ; no. is 2nd char SPACE? (CS+SP=break)
+                        scf                             ; yes: set carry for return status
+                        ret z                           ; back to menu
+                        jp nz, GetMsgInputLoop          ; no. collect another char
+
+GetMsgDelete            push af                         ; yes
+                        ld a,b                          ; let's see if we've got any chars to delete
+                        cp 0                            ;
+                        jp z, GetMsgInputLoop           ; no. collect another char
+                        pop af                          ; yes
+                        cp c                            ; is this key same as last keypress?
+                        jp z, GetMsgInputLoop           ; yes. = debounce
+                        ld c, a                         ; no. store key for next debounce check
+                        ld (hl), ' '                    ; blank current char
+                        dec hl                          ; and reposition buffer pointer
+                        inc b                           ; and collected char count
+                        jp GetMsgInputLoop              ; collect another char
+
+GetMsgNoShiftPressed    ld a,e                          ; do we have a key pressed?
+                        cp $ff                          ;
+                        jp z, GetMsgNoKeyPressed        ; no
+                        cp $21                          ; enter?
+                        ret z                           ;
+                        push bc                         ; we have a keypress without shift
+                        push hl                         ;
+                        ld b, 0                         ;
+                        ld c, a                         ;  bc = keycode value
+                        ld hl, ROM_KEYTABLE             ;  hl = code to ascii lookup table
+                        add hl, bc                      ;  find ascii given keycode
+                        ld a, (hl)                      ;
+                        pop hl                          ;
+                        pop bc                          ;
+                        cp $20                          ; check if >= 32 (ascii space)
+                        jp c,GetMsgInputLoop            ; no, ignore
+                        cp $7f                          ; check if <= 126 (ascii ~)
+                        jp nc,GetMsgInputLoop           ; no, ignore
+                        cp c                            ; does key = last keypress?
+                        jp z, GetMsgInputLoop           ; yes - debounce
+                        ld c, a                         ; no - store char in c for next check
+                        ld (hl),a                       ; no - store char in buffer
+                        inc hl                          ;
+                        dec b                           ; one less char to collect
+                        ld a,b                          ;
+                        cp 0                            ; collected all chars?
+                        ld a, c                         ;    (restore after the count check)
+                        ccf                             ; clear c for return status
+                        ret z                           ; yes
+                        jp GetMsgInputLoop              ; no
+
+GetMsgNoKeyPressed      cp c                            ; is current keycode same as last?
+                        jp z, GetMsgInputLoop           ; yes - just loop again
+                        ld c, a                         ; no, update c to show change
+                        jp GetMsgInputLoop              ;
+
+; HandleGetMessageToSend  ld de, OUT_MESSAGE              ;
+;                        ld hl, DUMMY_MESSAGE            ;
+;                        ld bc, 50                       ;
+;                        ldir                            ;
+;                        ret                             ;
 
 ProcessSendResponse     ld hl, (ResponseStart)          ;
                         ld a, (hl)                      ;
@@ -626,17 +701,19 @@ MSG_ERR_SENDING         defb "Error sending message"    ;
 MSG_PRESS_KEY           defb "Press any key to continue";
 MSG_UNREG_NICK          defb "Nick is unregistered with NxtMail";
 NICK_PROMPT             defb "To nickname: (20 chars. Enter to end)" ;
+MSG_GET_MSG_PROMPT      defb "Message body: (200 max. Enter to end)";
+MSG_GET_MSG_PROMPT_LEN  equ $-MSG_GET_MSG_PROMPT        ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "file.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "keys.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "zeus.asm"                      ; syntax highlighting;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "file.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "keys.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+include                 "zeus.asm"                      ; syntax highlighting;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 ; Raise an assembly-time error if the expression evaluates false
