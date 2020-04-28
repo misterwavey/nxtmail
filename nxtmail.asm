@@ -15,9 +15,9 @@
 
                         ;   zeusemulate "48K"
                         zeusemulate "Next", "RAW"       ; RAW prevents Zeus from adding some BASIC emulator-friendly
-zoLogicOperatorsHighPri = false                         ; data like the stack and system variables. Not needed because
-zoSupportStringEscapes  = true                          ; this only runs on the Next, and everything is already present.
-zxAllowFloatingLabels   = false                         ;
+                        zoLogicOperatorsHighPri = false ; data like the stack and system variables. Not needed because
+                        zoSupportStringEscapes = true   ; this only runs on the Next, and everything is already present.
+                        zxAllowFloatingLabels = false   ;
 
 ; NextZXOS APIs
 IDE_MODE                equ $01d5                       ; used to set the characters per line
@@ -409,7 +409,7 @@ HandleGetOutMsg         ld b, 200                       ; collect 20 chars for u
                         ld c, $24                       ; used to debounce
                         ld hl, OUT_MESSAGE              ; which buffer to store chars
                         PrintLine(0,5,MSG_GET_MSG_PROMPT, MSG_GET_MSG_PROMPT_LEN) ;
-GetMsgInputLoop         PrintLine(3,6,OUT_MESSAGE, 200)  ; show current buffer contents
+GetMsgInputLoop         PrintLine(3,6,OUT_MESSAGE, 200) ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
                         ei                              ;
@@ -728,24 +728,24 @@ NICK_PROMPT             defb "To nickname: (20 chars. Enter to end)" ;
 MSG_GET_MSG_PROMPT      defb "Message body: (200 max. Enter to end)";
 MSG_GET_MSG_PROMPT_LEN  equ $-MSG_GET_MSG_PROMPT        ;
 
-include                 "esp.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "constants.asm"                 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "msg.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "parse.asm"                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "macros.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "esxDOS.asm"                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "cip.asm"                       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "file.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "keys.asm"                      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-include                 "zeus.asm"                      ; syntax highlighting;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                        include "esp.asm"               ;
+                        include "constants.asm"         ;
+                        include "msg.asm"               ;
+                        include "parse.asm"             ;
+                        include "macros.asm"            ;
+                        include "esxDOS.asm"            ;
+                        include "cip.asm"               ;
+                        include "file.asm"              ;
+                        include "keys.asm"              ;
+                        include "zeus.asm"              ; syntax highlighting
 
 
 ; Raise an assembly-time error if the expression evaluates false
-zeusassert              zeusver<=78, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
+                        zeusassert zeusver<=78, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
 ; zeusprint               zeusver                         ;
 ; Generate a NEX file                                   ; Instruct the .NEX loader to write the file handle to this
-                        ;        output_z80 "NxtMail.z80",$FF40, Main ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;
-                        output_nex "NxtMail.nex", $FF40, Main ; Generate the file, with SP argument followed PC;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                        ;        output_z80 "NxtMail.z80",$FF40, Main ;
+                        output_nex "NxtMail.nex", $FF40, Main ; Generate the file, with SP argument followed PC
                         ; Zeus "just knows" which 16K banks to include in the .NEX file,
                         ; making generation a one-liner if you don't want loading screens
                         ; or external palette files. See History/Documentation in Zeus
