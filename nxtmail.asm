@@ -105,15 +105,25 @@ SetFontWidth            PrintChar(30)                   ; set char width in pixe
                         PrintChar(5)                    ; to 5 (51 chars wide)
                         ret                             ;
 
+ClearCentre             PrintAt(0,9)                    ;
+                        ld bc, 51*10                    ;
+ClearLoop               PrintChar(' ')                  ;
+                        dec bc                          ;
+                        ld a,c                          ;
+                        or b                            ;
+                        jp nz ClearLoop                 ;
+                        ret                             ;
+
 ;
 ; display main menu
 ;
 
-DisplayMenu             PrintLine(0,0,MENU_LINE_1,20)   ;
+DisplayMenu             call ClearCentre                ;
+                        PrintLine(0,0,MENU_LINE_1,20)   ;
                         PrintLine(0,1,MENU_LINE_2,20)   ;
                         PrintLine(0,2,MENU_LINE_3,15)   ;
                         PrintLine(0,3,MENU_LINE_4,24)   ;
-                        PrintLine(0,18,MboxHost,23)     ;
+                        PrintLine(0,20,MboxHost,23)     ;
                         ld a, (CONNECTED)               ;
                         cp 1                            ;
                         jp z, PrintConnected            ;
@@ -130,11 +140,11 @@ PrintConnected          ld hl,(MSG_COUNT)               ;
                         ld de, MSG_COUNT_BUF            ;
                         ld hl, (WordStart)              ;
                         ldir                            ;
-                        PrintLine(0,19,MSG_COUNT_BUF,1) ;
+                        PrintLine(0,21,MSG_COUNT_BUF,1) ;
                         jp PrintNick                    ;
-PrintZeroMessages       PrintLine(1,19,MSG_COUNT_ZERO,1);
-PrintNick               PrintLine(3,19,MBOX_BLANK_NICK,20) ;
-                        PrintLineLenVar(3,19,MBOX_NICK, MBOX_NICK_LEN) ;
+PrintZeroMessages       PrintLine(1,21,MSG_COUNT_ZERO,1);
+PrintNick               PrintLine(3,21,MBOX_BLANK_NICK,20) ;
+                        PrintLineLenVar(3,21,MBOX_NICK, MBOX_NICK_LEN) ;
                         ret                             ;
 
 ;
@@ -166,6 +176,7 @@ HandleRegister          PrintLine(0,5,REG_PROMPT, 26)   ;
                         call RegisterUserId             ;
                         PrintLine(0,8,OK, 2)            ;
                         call PressKeyToContinue         ;
+                        call ClearCentre                ;
                         ret                             ;
 
 ;
@@ -201,8 +212,8 @@ ProcessRegResponse      ld hl, (ResponseStart)          ;
                         jp z, PrintNickname             ;
                         cp MBOX_STATUS_REGISTER_OK      ; ok? cool
                         jp z, PrintNickname             ;
-PrintBadUser            PrintLine(6,19,MBOX_BLANK_NICK, 20);
-                        PrintLine(6,19,BAD_USER_MSG, 20) ; otherwise
+PrintBadUser            PrintLine(6,21,MBOX_BLANK_NICK, 20);
+                        PrintLine(6,21,BAD_USER_MSG, 20) ; otherwise
                         ret                             ;
 PrintNickname           ld a, 1                         ;
                         ld (CONNECTED), a               ;
@@ -248,7 +259,8 @@ LenIsMax                ld a, 20                        ;
 ; field: | status |
 
 
-HandleSend              call WipeTargetNick             ;
+HandleSend              call ClearCentre                ;
+                        call WipeTargetNick             ;
                         call HandleGetTargetNick        ;
                         ret c                           ; if we exited via BREAK
                         call TerminateTargetNick        ;
@@ -259,6 +271,7 @@ HandleSend              call WipeTargetNick             ;
                         call HandleCheckNick            ; is the nick registered?
                         jp z, HandleSend                ; nope
 
+                        call ClearCentre                ;
                         call WipeOutMsg                 ;
                         call HandleGetOutMsg            ;
                         call TerminateOutMsg            ;
@@ -496,6 +509,7 @@ ProcessSendResponse     ld hl, (ResponseStart)          ;
                         ret                             ;
 PrintProblemSend        PrintLine(15,15, MSG_ERR_SENDING,21);
                         call PressKeyToContinue         ;
+                        call ClearCentre                ;
                         ret                             ;
 
 ;
@@ -635,7 +649,7 @@ ProcessMsgCountResponse ld hl, (ResponseStart)          ;
                         ld a, (MSG_COUNT)               ; pull 1st back
                         call PrintAHexNoSpace           ; display
                         ret                             ;
-PrintProblem            PrintLine(6,19,BAD_USER_MSG, 20) ;
+PrintProblem            PrintLine(6,21,BAD_USER_MSG, 20) ;
                         ret                             ;
 
 ;

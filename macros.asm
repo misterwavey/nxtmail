@@ -182,11 +182,9 @@ OpenOutputChannel       macro(Channel)                  ; Semantic macro to call
                           di                            ;
                           mend                          ;
 
-PrintChar               macro(Char)                     ; Semantic macro to call a 48K ROM routine
-                          ei                            ;
+PrintChar               macro(Char)                     ; Semantic macro to call a 48K ROM routine                          ei                            ;
                           ld a, Char                    ;
                           rst $10                       ; ROM 0010: THE 'PRINT A CHARACTER' RESTART
-                          di                            ;
                           mend                          ;
 
 PrintAt                 macro(X, Y)                     ; Semantic macro to call a 48K ROM routine
