@@ -68,49 +68,49 @@ def handle_request(request, addr, db):
       response = build_response(STATUS_INVALID_PROTOCOL)
       print("<{threadName}-{addr}>: invalid protocol: {request}. Response {response}".format(**locals()))
       return response
-
-    if not(isValidUserId(userId, db)):
-      response = build_response(STATUS_UNKNOWN_USERID)
-      print ("<{threadName}-{addr}>: userId {userId} is not registered with mbox in db. Response {response}".format(**locals()))
-      return response
  
     if cmd == CMD_REGISTER:
       return handle_register(appId, userId, addr, db)
-
-    elif cmd == CMD_CHECK_REGISTERED_NICKNAME:
-      nickname = parse_param_as_nickname(request)
-      return handle_check_registered_nickname(appId, userId, nickname, addr, db)
-
-    elif cmd == CMD_SEND_MESSAGE:
-      nickname = parse_param_as_nickname(request)
-      if len(request) > 44:
-        message = request[44:301].decode()
-        printable = set(string.printable) #ascii only
-        message = "".join(filter(lambda x: x in printable, message))
-        return handle_send(appId, userId, nickname, message, addr, db)
-
-    elif cmd == CMD_MESSGAGE_COUNT:
-      return handle_get_message_count(appId, userId, addr, db)
-
-    elif cmd == CMD_GET_MESSAGE:
-      if len(request) < 25:
-        print ("<{threadName}-{addr}> missing message Id for get message".format(**locals()))
-        response = build_response(STATUS_MISSING_MESSAGE_ID)
-        return response
-      else:
-        messageId = request[24]
-        if messageId < 0:
-          print ("<{threadName}-{addr}> invalid number '{messageId}' for message id".format(**locals()))
-          response = build_response(STATUS_INVALID_MESSAGE_ID)
-          return response
-        else:
-          messageId = request[24]
-      return handle_get_message(appId, userId, messageId, addr, db)
-
     else:
-      response = build_response(STATUS_INVALID_CMD)
-      print("<{threadName}-{addr}>: invalid cmd: {request}. Response {response}".format(**locals()))
-      return response
+      if not(isValidUserId(userId, db)):
+        response = build_response(STATUS_UNKNOWN_USERID)
+        print ("<{threadName}-{addr}>: userId {userId} is not registered with mbox in db. Response {response}".format(**locals()))
+        return response
+
+      if cmd == CMD_CHECK_REGISTERED_NICKNAME:
+        nickname = parse_param_as_nickname(request)
+        return handle_check_registered_nickname(appId, userId, nickname, addr, db)
+
+      elif cmd == CMD_SEND_MESSAGE:
+        nickname = parse_param_as_nickname(request)
+        if len(request) > 44:
+          message = request[44:301].decode()
+          printable = set(string.printable) #ascii only
+          message = "".join(filter(lambda x: x in printable, message))
+          return handle_send(appId, userId, nickname, message, addr, db)
+
+      elif cmd == CMD_MESSGAGE_COUNT:
+        return handle_get_message_count(appId, userId, addr, db)
+
+      elif cmd == CMD_GET_MESSAGE:
+        if len(request) < 25:
+         print ("<{threadName}-{addr}> missing message Id for get message".format(**locals()))
+         response = build_response(STATUS_MISSING_MESSAGE_ID)
+         return response
+        else:
+         messageId = request[24]
+         if messageId < 0:
+           print ("<{threadName}-{addr}> invalid number '{messageId}' for message id".format(**locals()))
+            response = build_response(STATUS_INVALID_MESSAGE_ID)
+           return response
+          else:
+           messageId = request[24]
+        return handle_get_message(appId, userId, messageId, addr, db)
+
+      else:
+        response = build_response(STATUS_INVALID_CMD)
+        print("<{threadName}-{addr}>: invalid cmd: {request}. Response {response}".format(**locals()))
+        return response
 
 def parse_param_as_nickname(request):
   if len(request) > 24:

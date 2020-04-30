@@ -140,7 +140,7 @@ PrintConnected          ld hl,(MSG_COUNT)               ;
                         ld de, MSG_COUNT_BUF            ;
                         ld hl, (WordStart)              ;
                         ldir                            ;
-                        PrintLine(0,21,MSG_COUNT_BUF,1) ;
+                        PrintLine(0,21,MSG_COUNT_BUF,2) ;
                         jp PrintNick                    ;
 PrintZeroMessages       PrintLine(1,21,MSG_COUNT_ZERO,1);
 PrintNick               PrintLine(3,21,MBOX_BLANK_NICK,20) ;
