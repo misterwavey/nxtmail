@@ -37,12 +37,15 @@ STATUS_INVALID_MESSAGE_ID      = 204
 
 
 def on_new_client(clientsocket, addr, db):
-    while True:
+    done = False
+    while not done:
       request = clientsocket.recv(1024)
       response = handle_request(request, addr, db)
-      clientsocket.send(response)
-    clientsocket.close()
-
+      try:
+        clientsocket.send(response)
+      except BrokenPipeError:
+        clientsocket.close()
+        done = True
 
 def handle_request(request, addr, db):
   threadName = threading.currentThread().name
@@ -63,54 +66,70 @@ def handle_request(request, addr, db):
     message    = "" #optional
 
     print("<{threadName}-{addr}>: request: {request} maj {protoMajor} min {protoMinor} cmd {cmd} appid {appId} userId ".format(**locals()))
-
     if not(protoMajor == 0 and protoMinor == 1):
       response = build_response(STATUS_INVALID_PROTOCOL)
       print("<{threadName}-{addr}>: invalid protocol: {request}. Response {response}".format(**locals()))
       return response
+
+    if not(isValidUserId(userId, db)):
+      response = build_response(STATUS_UNKNOWN_USERID)
+      print ("<{threadName}-{addr}>: userId {userId} is not registered with mbox in db. Response {response}".format(**locals()))
+      return response
  
     if cmd == CMD_REGISTER:
       return handle_register(appId, userId, addr, db)
-    else:
-      if not(isValidUserId(userId, db)):
-        response = build_response(STATUS_UNKNOWN_USERID)
-        print ("<{threadName}-{addr}>: userId {userId} is not registered with mbox in db. Response {response}".format(**locals()))
+
+    elif cmd == CMD_CHECK_REGISTERED_NICKNAME:
+      nickname = parse_param_as_nickname(request)
+      return handle_check_registered_nickname(appId, userId, nickname, addr, db)
+
+    elif cmd == CMD_SEND_MESSAGE:    
+      nickname = parse_param_as_nickname(request)
+      if nickname == None or len(nickname) == 0:
+        response = build_response(STATUS_MISSING_NICKNAME)
+        print("<{threadName}-{addr}>: missing nickname: {request}. Response {response}".format(**locals()))
+        return response    
+      if len(request) > 44:
+        message = request[44:301]
+        if message == None or len(message) == 0:
+          response = build_response(STATUS_MISSING_MESSAGE)
+          print("<{threadName}-{addr}>: MISSING message for send msg cmd. Response {response}".format(**locals()))
+          return response
+        message = message.decode()
+        printable = set(string.printable) #ascii only
+        message = "".join(filter(lambda x: x in printable, message))
+        if message == None or len(message) == 0:
+          response = build_response(STATUS_MISSING_MESSAGE)
+          print("<{threadName}-{addr}>: MISSING message for send msg cmd. Response {response}".format(**locals()))
+          return response
+        return handle_send(appId, userId, nickname, message, addr, db)
+      else:
+        response = build_response(STATUS_MISSING_MESSAGE)
+        print("<{threadName}-{addr}>: MISSING message for send msg cmd. Response {response}".format(**locals()))
         return response
 
-      if cmd == CMD_CHECK_REGISTERED_NICKNAME:
-        nickname = parse_param_as_nickname(request)
-        return handle_check_registered_nickname(appId, userId, nickname, addr, db)
+    elif cmd == CMD_MESSGAGE_COUNT:
+      return handle_get_message_count(appId, userId, addr, db)
 
-      elif cmd == CMD_SEND_MESSAGE:
-        nickname = parse_param_as_nickname(request)
-        if len(request) > 44:
-          message = request[44:301].decode()
-          printable = set(string.printable) #ascii only
-          message = "".join(filter(lambda x: x in printable, message))
-          return handle_send(appId, userId, nickname, message, addr, db)
-
-      elif cmd == CMD_MESSGAGE_COUNT:
-        return handle_get_message_count(appId, userId, addr, db)
-
-      elif cmd == CMD_GET_MESSAGE:
-        if len(request) < 25:
-          print ("<{threadName}-{addr}> missing message Id for get message".format(**locals()))
-          response = build_response(STATUS_MISSING_MESSAGE_ID)
+    elif cmd == CMD_GET_MESSAGE:
+      if len(request) < 25:
+        print ("<{threadName}-{addr}> missing message Id for get message".format(**locals()))
+        response = build_response(STATUS_MISSING_MESSAGE_ID)
+        return response
+      else:
+        messageId = request[24]
+        if messageId < 0:
+          print ("<{threadName}-{addr}> invalid number '{messageId}' for message id".format(**locals()))
+          response = build_response(STATUS_INVALID_MESSAGE_ID)
           return response
         else:
           messageId = request[24]
-          if messageId < 0:
-            print ("<{threadName}-{addr}> invalid number '{messageId}' for message id".format(**locals()))
-            response = build_response(STATUS_INVALID_MESSAGE_ID)
-            return response
-          else:
-            messageId = request[24]
-            return handle_get_message(appId, userId, messageId, addr, db)
+      return handle_get_message(appId, userId, messageId, addr, db)
 
-      else:
-        response = build_response(STATUS_INVALID_CMD)
-        print("<{threadName}-{addr}>: invalid cmd: {request}. Response {response}".format(**locals()))
-        return response
+    else:
+      response = build_response(STATUS_INVALID_CMD)
+      print("<{threadName}-{addr}>: invalid cmd: {request}. Response {response}".format(**locals()))
+      return response
 
 def parse_param_as_nickname(request):
   if len(request) > 24:
@@ -121,16 +140,6 @@ def parse_param_as_nickname(request):
 
 def handle_send(appId, userId, nickname, message, addr, db):
     threadName = threading.currentThread().name    
-    if len(nickname) == 0:
-      response = build_response(STATUS_MISSING_NICKNAME)
-      print("<{threadName}-{addr}>: MISSING nickname for send msg cmd. Response {response}".format(**locals()))
-      return response
-
-    if len(message) == 0:
-      response = build_response(STATUS_MISSING_MESSAGE)
-      print("<{threadName}-{addr}>: MISSING message for send msg cmd. Response {response}".format(**locals()))
-      return response
-
     if not(isValidUserIdForApp(userId, appId, db)):
       response = build_response(STATUS_UNREGISTERED_USERID)
       print ("<{threadName}-{addr}>: userId {userId} is not registered with app {appId} in db. Response {response}".format(**locals()))
@@ -211,8 +220,8 @@ def handle_get_message(appId, userId, messageId, addr, db):
       messageIds = results
       messageCount = len(messageIds)
       print ("<{threadName}-{addr}> userId has {messageCount} messages for appId {appId} in db".format(**locals()))
-      if messageId < messageCount:
-        actualMessageId = messageIds[messageId]
+      if messageId <= messageCount:
+        actualMessageId = messageIds[messageId-1]
         sql = "select message from message where messageId = %s"
         cursor.execute(sql, (actualMessageId))
         results = cursor.fetchall()
@@ -233,7 +242,7 @@ def handle_get_message(appId, userId, messageId, addr, db):
           response = bytes(bytearray(bStatus + bLen + bMessage))
           return response
       else:
-          print ("<{threadName}-{addr}> invalid messageid {messageid} for user {userId}}".format(**locals()))
+          print ("<{threadName}-{addr}> invalid messageid {messageId} for user {userId}".format(**locals()))
           response = build_response(STATUS_INVALID_MESSAGE_ID)
           return response
   except IntegrityError as e:
@@ -268,7 +277,7 @@ def handle_get_message_count(appId, userId, addr, db):
 def handle_check_registered_nickname(appId, userId, nickname, addr, db):
   threadName = threading.currentThread().name    
 
-  if len(nickname) == 0:
+  if nickname == None or len(nickname) == 0:
     response = build_response(STATUS_MISSING_NICKNAME)
     print("<{threadName}-{addr}>: MISSING nickname for check registered nickname cmd. Response: {response}".format(**locals()))
     return response
