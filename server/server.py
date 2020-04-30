@@ -94,18 +94,18 @@ def handle_request(request, addr, db):
 
       elif cmd == CMD_GET_MESSAGE:
         if len(request) < 25:
-         print ("<{threadName}-{addr}> missing message Id for get message".format(**locals()))
-         response = build_response(STATUS_MISSING_MESSAGE_ID)
-         return response
+          print ("<{threadName}-{addr}> missing message Id for get message".format(**locals()))
+          response = build_response(STATUS_MISSING_MESSAGE_ID)
+          return response
         else:
-         messageId = request[24]
-         if messageId < 0:
-           print ("<{threadName}-{addr}> invalid number '{messageId}' for message id".format(**locals()))
+          messageId = request[24]
+          if messageId < 0:
+            print ("<{threadName}-{addr}> invalid number '{messageId}' for message id".format(**locals()))
             response = build_response(STATUS_INVALID_MESSAGE_ID)
-           return response
+            return response
           else:
-           messageId = request[24]
-        return handle_get_message(appId, userId, messageId, addr, db)
+            messageId = request[24]
+            return handle_get_message(appId, userId, messageId, addr, db)
 
       else:
         response = build_response(STATUS_INVALID_CMD)
