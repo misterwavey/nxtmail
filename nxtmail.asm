@@ -345,7 +345,7 @@ BuildSendMsgRequest     ld (MBOX_CMD), a                ;
 HandleGetTargetNick     ld b, 20                        ; collect 20 chars for userId
                         ld c, $24                       ; used to debounce
                         ld hl, TARGET_NICK_BUF          ; which buffer to store chars
-                        PrintLine(0,5,NICK_PROMPT, 37)  ;
+                        PrintLine(0,5,NICK_PROMPT, NICK_PROMPT_LEN) ;
 GetNickInputLoop        PrintLine(3,6,TARGET_NICK_BUF, 20) ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
@@ -507,7 +507,7 @@ ProcessSendResponse     ld hl, (ResponseStart)          ;
                         PrintLine(15, 15, OK, 2)        ;
                         call PressKeyToContinue         ;
                         ret                             ;
-PrintProblemSend        PrintLine(15,15, MSG_ERR_SENDING,21);
+PrintProblemSend        PrintLine(15,15, MSG_ERR_SENDING,MSG_ERR_SENDING_LEN);
                         call PressKeyToContinue         ;
                         call ClearCentre                ;
                         ret                             ;
@@ -552,7 +552,7 @@ ProcessNickResponse     ld hl, (ResponseStart)          ;
                         cp MBOX_STATUS_UNREG_NICK       ;
                         jp z, UnregisteredNick          ;
                         ret                             ; Z unset
-UnregisteredNick        PrintLine(0,16,MSG_UNREG_NICK, 33);
+UnregisteredNick        PrintLine(0,16,MSG_UNREG_NICK, MSG_UNREG_NICK_LEN);
                         call PressKeyToContinue         ;
                         ld a, 0                         ;
                         or a                            ; Z set
@@ -570,7 +570,11 @@ UnregisteredNick        PrintLine(0,16,MSG_UNREG_NICK, 33);
 ; field:    | status | messagelen | message    |
 ; condition |        | status=203 | status=203 |
 
-HandleViewMessage       call HandleGetMsgId             ;
+HandleViewMessage       call WipeMsgId                  ;  replace with ' 's
+                        call HandleGetMsgId             ;  input 0-5 digits
+                        call TerminateMsgId             ;  place 0 at end of input
+                        call CountMsgIdLen              ;  populate MSG_ID_BUF_LEN with the num digits in the id
+                        DecodeDecimal(MSG_ID_BUF, MSG_ID_BUF_LEN) ; populate hl with the numerical value of the input id
                         ld a, MBOX_CMD_GET_MESSAGE      ; send:
                         call BuildGetMsgRequest         ;
                         ld h, 0                         ; result: 0
@@ -580,18 +584,133 @@ HandleViewMessage       call HandleGetMsgId             ;
                         call ProcessGetResponse         ;
                         ret                             ;
 
+CountMsgIdLen           ld hl, MSG_ID_BUF               ;
+                        ld a, $00                       ;
+                        ld bc, 5                        ; nick max len
+                        cpir                            ; find first $00 or bc == 0
+                        ld a, c                         ;
+                        or b                            ; bc == 0?
+                        jp z, MsgIdLenIsMax             ; yes: set size to 20
+                        ld a, 5                         ; no: calc len of 20 - bc
+                        sub c                           ; if bc max is 20, b is 0
+                        ld (MSG_ID_BUF_LEN), a          ;
+                        ret                             ;
+
+MsgIdLenIsMax           ld a, 20                        ;
+                        ld (MSG_ID_BUF_LEN), a          ;
+                        ret                             ;
+
+TerminateMsgId          ld hl, MSG_ID_BUF               ;  set trailing $0s after text for remainder of number
+                        ld a, ' '                       ;
+                        ld bc, 5                        ;
+                        cpir                            ;
+                        jp nz,MsgIdNoSpaces             ;
+                        dec hl                          ; found a space so back up
+                        inc c                           ; including counter
+                        ld d,h                          ; copy remaining counter's worth of $0s over the rest of the nick
+                        ld e,l                          ;
+                        inc de                          ;
+                        ld (hl), 0                      ;
+                        ldir                            ;
+MsgIdNoSpaces           ret                             ;
+
+WipeMsgId               ld hl, OUT_MESSAGE              ;   fill nick with spaces (0s cause problems when printing to screen)
+                        ld d,h                          ;
+                        ld e,l                          ;
+                        inc de                          ;
+                        ld (hl), ' '                    ;
+                        ld bc, 5                        ;
+                        ldir                            ;
+                        ret                             ;
+
 BuildGetMsgRequest      ld (MBOX_CMD), a                ;
                         ld de, REQUESTBUF               ; entire server request string
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ;
                         WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
                         WriteString(USERIDBUF,20)       ; userid
-                        WriteString(MBOX_MSG_ID,1)      ;
+                        WriteString(MBOX_MSG_ID,2)      ;
                         ret                             ;
 
-HandleGetMsgId          ld a, 1                         ;  TODO get user input
-                        ld (MBOX_MSG_ID), a             ;
-                        ret                             ;
+HandleGetMsgId          ld b, 5                         ; collect 1-5 chars for msg id (0-65535)
+                        ld c, $24                       ; used to debounce
+                        ld hl, MSG_ID_BUF               ; which buffer to store chars
+                        PrintLine(0,5,MSG_ID_PROMPT, MSG_ID_PROMPT_LEN) ;
+GetMsgIdInputLoop       PrintLine(3,6,MSG_ID_BUF, 5)    ; show current buffer contents
+                        push hl                         ;
+                        push bc                         ;
+                        ei                              ;
+                        call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
+                        di                              ;
+                        pop bc                          ;
+                        pop hl                          ;
+                        ld a,d                          ; do we have a key modifier? (ss CS etc)
+                        cp $ff                          ;
+                        jp nz, GetMsgIdShiftCheck       ; yes
+                        jp GetMsgIdNoShiftPressed       ; no
+
+GetMsgIdShiftCheck      cp $27                          ; $27=CS - check if caps shift is pressed (CS + 0 = delete)
+                        jp nz, GetMsgIdNoShiftPressed   ; no
+                        ld a,e                          ; yes. check 2nd char
+                        cp $23                          ; $23=0 - is 2nd char 0 key? (CS + 0 = delete)
+                        jp z, GetMsgIdDelete            ; yes
+                        cp $20                          ; no. is 2nd char SPACE? (CS+SP=break)
+                        scf                             ; yes: set carry for return status
+                        ret z                           ; back to menu
+                        jp nz, GetMsgIdInputLoop        ; no. collect another char
+
+GetMsgIdDelete          push af                         ; yes
+                        ld a,b                          ; let's see if we've got any chars to delete
+                        cp 0                            ;
+                        jp z, GetMsgIdInputLoop         ; no. collect another char
+                        pop af                          ; yes
+                        cp c                            ; is this key same as last keypress?
+                        jp z, GetMsgIdInputLoop         ; yes. = debounce
+                        ld c, a                         ; no. store key for next debounce check
+                        ld (hl), ' '                    ; blank current char
+                        dec hl                          ; and reposition buffer pointer
+                        inc b                           ; and collected char count
+                        jp GetMsgIdInputLoop            ; collect another char
+
+GetMsgIdNoShiftPressed  ld a,e                          ; do we have a key pressed?
+                        cp $ff                          ;
+                        jp z, GetMsgIdNoKeyPressed      ; no
+                        cp $21                          ; enter?
+                        ret z                           ; yes, we're done
+                        push bc                         ; we have a keypress without shift
+                        push hl                         ;
+                        ld b, 0                         ;
+                        ld c, a                         ;  bc = keycode value
+                        ld hl, ROM_KEYTABLE             ;  hl = code to ascii lookup table
+                        add hl, bc                      ;  find ascii given keycode
+                        ld a, (hl)                      ;
+                        pop hl                          ;
+                        pop bc                          ;
+                        cp $30                          ; check if >= 48 (ascii '0')
+                        jp c,GetMsgIdInputLoop          ; no, ignore
+                        cp $3a                          ; check if < 58 (ascii '9'+1)
+                        jp nc,GetMsgIdInputLoop         ; no, ignore
+                        cp c                            ; does key = last keypress?
+                        jp z, GetMsgIdInputLoop         ; yes - debounce
+                        ld c, a                         ; no - store char in c for next check
+                        ld (hl),a                       ; no - store char in buffer
+                        inc hl                          ;
+                        dec b                           ; one less char to collect
+                        ld a,b                          ;
+                        cp 0                            ; collected all chars?
+                        ld a, c                         ;    (restore after the count check)
+                        ccf                             ; clear c for return status
+                        ret z                           ; yes
+                        jp GetMsgIdInputLoop            ; no
+
+GetMsgIdNoKeyPressed    cp c                            ; is current keycode same as last?
+                        jp z, GetMsgIdInputLoop         ; yes - just loop again
+                        ld c, a                         ; no, update c to show change
+                        jp GetMsgIdInputLoop            ;
+
+;HandleGetMsgId          ld a, 1                         ;  TODO get user input
+;                        ld (MBOX_MSG_ID), a             ;
+;                        ret                             ;
 
 ProcessGetResponse      ld hl, (ResponseStart)          ;  status byte
                         ld a, (hl)                      ;
@@ -608,7 +727,7 @@ ProcessGetResponse      ld hl, (ResponseStart)          ;  status byte
                         call PressKeyToContinue         ;                        ;
                         ret                             ;
 
-PrintBadMsgId           PrintLine(0,15,BAD_MSG_ID,18)   ;
+PrintBadMsgId           PrintLine(0,15,BAD_MSG_ID,BAD_MSG_ID_LEN) ;
                         call PressKeyToContinue         ;                        ;
                         ret                             ;
 
@@ -649,7 +768,7 @@ ProcessMsgCountResponse ld hl, (ResponseStart)          ;
                         ld a, (MSG_COUNT)               ; pull 1st back
                         call PrintAHexNoSpace           ; display
                         ret                             ;
-PrintProblem            PrintLine(6,21,BAD_USER_MSG, 20) ;
+PrintProblem            PrintLine(6,21,BAD_USER_MSG, BAD_USER_MSG_LEN) ;
                         ret                             ;
 
 ;
@@ -668,7 +787,7 @@ BuildStandardRequest    ld (MBOX_CMD), a                ;
                         WriteString(USERIDBUF,20)       ; userid
                         ret                             ;
 
-PressKeyToContinue      PrintLine(0,17, MSG_PRESS_KEY, 25);
+PressKeyToContinue      PrintLine(0,17, MSG_PRESS_KEY, MSG_PRESS_KEY_LEN);
 KeyLoop                 ei                              ;
                         call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
                         di                              ;
@@ -685,9 +804,11 @@ MENU_LINE_2             defb "2. Send message     "     ;
 MENU_LINE_3             defb "3. view message"          ;
 MENU_LINE_4             defb "4. refresh message count" ;
 REG_PROMPT              defb "Enter your Next Mailbox Id";
+REG_PROMPT_LEN          equ $-REG_PROMPT                ;
 PROMPT                  defb "> "                       ;
 OK                      defb "OK"                       ;
 BAD_USER_MSG            defb "<no user registered>"     ;
+BAD_USER_MSG_LEN        equ $-BAD_USER_MSG              ;
 
 USERIDBUF               defs 128, ' '                   ; our input buffer
 BUFLEN                  defs 1                          ;
@@ -730,15 +851,24 @@ BufferLen               equ $-Buffer                    ;
 MsgBuffer:              ds 256                          ;
 MsgBufferLen            equ $-MsgBuffer                 ;
 TARGET_NICK_BUF         defs 20,' '                     ;
-TARGET_NICK_LEN         defb 0,0                        ;
-MBOX_MSG_ID             defb 0                          ;
-IN_MSG_LEN              defb 0,0                        ;   2 because we'll point BC at it for ldir
+TARGET_NICK_LEN         defb 0,0                        ; 2 because we'll point BC at it for ldir
+MSG_ID_PROMPT           defb "Message number (0-65535. Enter to end)" ;
+MSG_ID_PROMPT_LEN       equ $-MSG_ID_PROMPT             ;
+MSG_ID_BUF              defs 5,' '                      ; 0-65535
+MSG_ID_BUF_LEN          defb 0,0                        ; 2 because we'll point BC at it for ldir
+MBOX_MSG_ID             defb 0,0                        ; 2 because 2 bytes for 0-65535
+IN_MSG_LEN              defb 0,0                        ; 2 because we'll point BC at it for ldir
 IN_MESSAGE              defs 200                        ;
 BAD_MSG_ID              defb "bad message number"       ;
+BAD_MSG_ID_LEN          equ $-BAD_MSG_ID                ;
 MSG_ERR_SENDING         defb "Error sending message"    ;
+MSG_ERR_SENDING_LEN     equ $-MSG_ERR_SENDING           ;
 MSG_PRESS_KEY           defb "Press any key to continue";
+MSG_PRESS_KEY_LEN       equ $-MSG_PRESS_KEY             ;
 MSG_UNREG_NICK          defb "Nick is unregistered with NxtMail";
+MSG_UNREG_NICK_LEN      equ $-MSG_UNREG_NICK            ;
 NICK_PROMPT             defb "To nickname: (20 chars. Enter to end)" ;
+NICK_PROMPT_LEN         equ $-NICK_PROMPT               ;
 MSG_GET_MSG_PROMPT      defb "Message body: (200 max. Enter to end)";
 MSG_GET_MSG_PROMPT_LEN  equ $-MSG_GET_MSG_PROMPT        ;
 
