@@ -571,32 +571,33 @@ UnregisteredNick        PrintLine(0,16,MSG_UNREG_NICK, MSG_UNREG_NICK_LEN);
 ; condition |        | status=203 | status=203 |
 
 HandleViewMessage       call WipeMsgId                  ;  replace with ' 's
-                        call HandleGetMsgId             ;  input 0-5 digits
-                        call TerminateMsgId             ;  place 0 at end of input
+                        call HandleGetMsgId             ;  input 1-5 digits
+                        call TerminateMsgId             ;  place 0 at end of input if < 5
                         call CountMsgIdLen              ;  populate MSG_ID_BUF_LEN with the num digits in the id
                         DecodeDecimal(MSG_ID_BUF, MSG_ID_BUF_LEN) ; populate hl with the numerical value of the input id
+                        ld (MBOX_MSG_ID), hl            ;
                         ld a, MBOX_CMD_GET_MESSAGE      ; send:
                         call BuildGetMsgRequest         ;
                         ld h, 0                         ; result: 0
-                        ld l, 2+1+1+20+1                ; proto+cmd+app+userid+1
+                        ld l, 2+1+1+20+2                ; proto+cmd+app+userid+2_id_bytes
                         ld de, REQUESTBUF               ;
                         call MakeCIPSend                ;
                         call ProcessGetResponse         ;
                         ret                             ;
 
 CountMsgIdLen           ld hl, MSG_ID_BUF               ;
-                        ld a, $00                       ;
+                        ld a, ' '                       ;
                         ld bc, 5                        ; nick max len
                         cpir                            ; find first $00 or bc == 0
                         ld a, c                         ;
                         or b                            ; bc == 0?
-                        jp z, MsgIdLenIsMax             ; yes: set size to 20
-                        ld a, 5                         ; no: calc len of 20 - bc
-                        sub c                           ; if bc max is 20, b is 0
+                        jp z, MsgIdLenIsMax             ; yes: set size to 5
+                        ld a, 5                         ; no: calc len of 5 - bc
+                        sub c                           ; if bc max is 5, b is 0
                         ld (MSG_ID_BUF_LEN), a          ;
                         ret                             ;
 
-MsgIdLenIsMax           ld a, 20                        ;
+MsgIdLenIsMax           ld a, 5                         ;
                         ld (MSG_ID_BUF_LEN), a          ;
                         ret                             ;
 
@@ -626,10 +627,10 @@ WipeMsgId               ld hl, OUT_MESSAGE              ;   fill nick with space
 BuildGetMsgRequest      ld (MBOX_CMD), a                ;
                         ld de, REQUESTBUF               ; entire server request string
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
-                        WriteString(MBOX_CMD, 1)        ;
+                        WriteString(MBOX_CMD, 1)        ; cmd is get message by id
                         WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
                         WriteString(USERIDBUF,20)       ; userid
-                        WriteString(MBOX_MSG_ID,2)      ;
+                        WriteString(MBOX_MSG_ID,2)      ; param 1 is msg id
                         ret                             ;
 
 HandleGetMsgId          ld b, 5                         ; collect 1-5 chars for msg id (0-65535)
@@ -724,11 +725,11 @@ ProcessGetResponse      ld hl, (ResponseStart)          ;  status byte
                         ld bc, (IN_MSG_LEN)             ;
                         ldir                            ;
                         PrintLineLenVar(0,10,IN_MESSAGE,IN_MSG_LEN);
-                        call PressKeyToContinue         ;                        ;
+                        call PressKeyToContinue         ;
                         ret                             ;
 
 PrintBadMsgId           PrintLine(0,15,BAD_MSG_ID,BAD_MSG_ID_LEN) ;
-                        call PressKeyToContinue         ;                        ;
+                        call PressKeyToContinue         ;
                         ret                             ;
 
 ;
@@ -854,9 +855,9 @@ TARGET_NICK_BUF         defs 20,' '                     ;
 TARGET_NICK_LEN         defb 0,0                        ; 2 because we'll point BC at it for ldir
 MSG_ID_PROMPT           defb "Message number (0-65535. Enter to end)" ;
 MSG_ID_PROMPT_LEN       equ $-MSG_ID_PROMPT             ;
-MSG_ID_BUF              defs 5,' '                      ; 0-65535
-MSG_ID_BUF_LEN          defb 0,0                        ; 2 because we'll point BC at it for ldir
-MBOX_MSG_ID             defb 0,0                        ; 2 because 2 bytes for 0-65535
+MSG_ID_BUF              defs 5,' '                      ; '0'-'65535'
+MSG_ID_BUF_LEN          defb 0                          ; length of the digits entered 1-5
+MBOX_MSG_ID             defb 0,0                        ; 2 bytes for 0-65535
 IN_MSG_LEN              defb 0,0                        ; 2 because we'll point BC at it for ldir
 IN_MESSAGE              defs 200                        ;
 BAD_MSG_ID              defb "bad message number"       ;
