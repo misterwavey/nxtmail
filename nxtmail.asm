@@ -167,6 +167,7 @@ EndLoop                 jp HandleMenuChoice             ;
 
 HandleRegister          PrintLine(0,5,REG_PROMPT, 26)   ;
                         PrintLine(0,6,PROMPT, 2)        ;
+                        call WipeUserId                 ;
                         call HandleUserIdInput          ;
                         cp $20                          ; was last key pressed a space?
                         ret z                           ; yes. back to menu - input was cancelled by break
@@ -199,6 +200,14 @@ RegisterUserId:         ld a, MBOX_CMD_REGISTER         ;
                         call ProcessRegResponse         ;
                         ret                             ;
 
+WipeUserId              ld hl, USER_ID_BUF              ;   fill nick with spaces (0s cause problems when printing to screen)
+                        ld d,h                          ;
+                        ld e,l                          ;
+                        inc de                          ;
+                        ld (hl), ' '                    ;
+                        ld bc, 20                       ;
+                        ldir                            ;
+                        ret                             ;
 ;
 ; process registration response
 ;
@@ -331,7 +340,7 @@ BuildSendMsgRequest     ld (MBOX_CMD), a                ;
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ;
                         WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
-                        WriteString(USERIDBUF,20)       ; userid
+                        WriteString(USER_ID_BUF,20)     ; userid
                         WriteString(TARGET_NICK_BUF,20) ;
                         WriteString(OUT_MESSAGE,200)    ;
                         ret                             ;
@@ -509,7 +518,7 @@ PrintProblemSend        PrintLine(15,15, MSG_ERR_SENDING,MSG_ERR_SENDING_LEN);
 ;
 ; handle check registered nickname
 ; ENTRY
-;    USERIDBUF is set to valid userid
+;    USER_ID_BUF is set to valid userid
 ;    TARGET_NICK_BUF is set to $0 terminated nick max 20 len
 ; EXIT
 ;    Z set if nick is unregistered with nextmail otherwise Z is unset
@@ -537,7 +546,7 @@ BuildNickRequest        ld (MBOX_CMD), a                ;
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ;
                         WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
-                        WriteString(USERIDBUF,20)       ; userid
+                        WriteString(USER_ID_BUF,20)     ; userid
                         WriteString(TARGET_NICK_BUF,20) ;
                         ret                             ;
 
@@ -580,6 +589,9 @@ HandleViewMessage       call WipeMsgId                  ;  fill entire string wi
 ;                        ld (hl), 0                      ;
 
                         DecodeDecimal(MSG_ID_BUF, MSG_ID_BUF_LEN) ; populate hl with the numerical value of the input id
+;                        ld a,l                          ; swap LSB-MSB
+;                        ld l,h                          ;
+;                        ld h,a                          ;
                         ld (MBOX_MSG_ID), hl            ;
 
                         PrintAt(13,14)                  ; debug hl
@@ -651,7 +663,7 @@ BuildGetMsgRequest      ld (MBOX_CMD), a                ;
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ; cmd is get message by id
                         WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
-                        WriteString(USERIDBUF,20)       ; userid
+                        WriteString(USER_ID_BUF,20)     ; userid
                         WriteString(MBOX_MSG_ID,2)      ; param 1 is msg id
                         ret                             ;
 
@@ -809,7 +821,7 @@ BuildStandardRequest    ld (MBOX_CMD), a                ;
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ;
                         WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
-                        WriteString(USERIDBUF,20)       ; userid
+                        WriteString(USER_ID_BUF,20)     ; userid
                         ret                             ;
 
 PressKeyToContinue      PrintLine(0,17, MSG_PRESS_KEY, MSG_PRESS_KEY_LEN);
@@ -835,7 +847,7 @@ OK                      defb "OK"                       ;
 BAD_USER_MSG            defb "<no user registered>"     ;
 BAD_USER_MSG_LEN        equ $-BAD_USER_MSG              ;
 
-USERIDBUF               defs 128, ' '                   ; our input buffer
+USER_ID_BUF             defs 128, ' '                   ; our input buffer
 BUFLEN                  defs 1                          ;
 FILEBUF                 defs 128                        ;
 

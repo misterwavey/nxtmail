@@ -112,18 +112,21 @@ def handle_request(request, addr, db):
       return handle_get_message_count(appId, userId, addr, db)
 
     elif cmd == CMD_GET_MESSAGE:
-      if len(request) < 25:
+      if len(request) < 26: #2bytes for msgid
         print ("<{threadName}-{addr}> missing message Id for get message".format(**locals()))
         response = build_response(STATUS_MISSING_MESSAGE_ID)
         return response
-      else:
-        messageId = request[24]
-        if messageId < 0:
+      else:    
+        byte1 = request[24]
+        byte2 = request[25]
+        b = bytes(request[24:26])
+        messageId = int.from_bytes(b,byteorder="little")
+        print ("<{threadName}-{addr}> extracted '{messageId}' for message id".format(**locals()))
+        if messageId < 1:
           print ("<{threadName}-{addr}> invalid number '{messageId}' for message id".format(**locals()))
           response = build_response(STATUS_INVALID_MESSAGE_ID)
-          return response
-        else:
-          messageId = request[24]
+          return response          
+
       return handle_get_message(appId, userId, messageId, addr, db)
 
     else:
@@ -263,10 +266,10 @@ def handle_get_message_count(appId, userId, addr, db):
       response = build_response(STATUS_INTERNAL_ERROR)
       return response
     else:
-      messageCount = results[0]
+      messageCount = 258 #results[0] # testing 2byte response
       print(type(messageCount))
       print ("<{threadName}-{addr}> userId has {messageCount} messages for appId {appId} in db".format(**locals()))
-      response = bytes([STATUS_COUNT_OK] + [messageCount])
+      response = bytes([STATUS_COUNT_OK] + list(messageCount.to_bytes(2, byteorder="little"))) # todo OverflowError raised if num > 2 bytes
       return response
   except IntegrityError as e:
     print ("<{threadName}-{addr}> Caught a IntegrityError:"+str(e))
