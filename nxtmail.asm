@@ -106,8 +106,8 @@ SetFontWidth            PrintChar(30)                   ; set char width in pixe
                         ret                             ;
 
 ClearCentre             PrintAt(0,7)                    ;
-                        ld bc, 42*13                    ; 52 cols * 13 rows. todo: ldir this?
-ClearLoop               PrintChar('x')                  ;
+                        ld bc, 51*13                    ; 52 cols * 13 rows. todo: ldir this?
+ClearLoop               PrintChar(' ')                  ;
                         dec bc                          ;
                         ld a,c                          ;
                         or b                            ;
@@ -125,18 +125,24 @@ DisplayMenu             call DrawMenuBox                ;
                         call DisplayStatus              ;
                         ret                             ;
 
-DisplayStatus           PrintLine(0,22,BLANK_ROW,51)    ;
+DisplayStatus           PrintLine(0,21,BLANK_ROW,51)    ;
+                        PrintLine(0,22,BLANK_ROW,51)    ;
                         PrintLine(0,23,BLANK_ROW,51)    ;
-                        PrintLine(0,22,MboxHost,MboxHostLen) ;
+                        PrintLine(0,21,CONNECTED_TO, CONNECTED_TO_LEN);
+                        PrintLine(0+CONNECTED_TO_LEN,21,MboxHost,MboxHostLen) ;
                         ld a, (CONNECTED)               ;
                         cp 1                            ;
                         jp z, PrintConnected            ;
                         PrintLine(MboxHostLen+1,18,OFFLINE,OFFLINE_LEN);
                         ret                             ;
-PrintConnected          ld hl,(MSG_COUNT)               ;
+
+PrintConnected          PrintLine(0,22,MSG_NICK,MSG_NICK_LEN) ;
+                        PrintLineLenVar(0+MSG_NICK_LEN,22,MBOX_NICK, MBOX_NICK_LEN) ;
+                        PrintLine(0,23,MESSAGES,MESSAGES_LEN);
+                        PrintLine(50-VERSION_LEN,23,VERSION,VERSION_LEN);
+                        ld hl,(MSG_COUNT)               ;
                         inc (hl)                        ;
                         dec (hl)                        ; trick for zero check
-                        cp 0                            ; is message count 0?
                         jp z, PrintZeroMessages         ; don't convert message count to ascii if zero (ldir uses len in BC)
                         ld hl, (MSG_COUNT)              ;
                         call ConvertWordToAsc           ; otherwise do
@@ -144,11 +150,9 @@ PrintConnected          ld hl,(MSG_COUNT)               ;
                         ld de, MSG_COUNT_BUF            ;
                         ld hl, (WordStart)              ;
                         ldir                            ;
-                        PrintLineLenVar(0,23,MSG_COUNT_BUF,WordLen) ;
-                        jp PrintNick                    ;
-PrintZeroMessages       PrintLine(1,23,MSG_COUNT_ZERO,1);
-PrintNick               PrintLine(6,23,MBOX_BLANK_NICK,20) ;
-                        PrintLineLenVar(6,23,MBOX_NICK, MBOX_NICK_LEN) ;
+                        PrintLineLenVar(0+MESSAGES_LEN,23,MSG_COUNT_BUF,WordLen) ;
+                        ret
+PrintZeroMessages       PrintLine(0+MESSAGES_LEN,23,MSG_COUNT_ZERO,1);
                         ret                             ;
 
 DrawMenuBox             PrintLine(0,0,TOP_ROW,51)       ;
@@ -270,8 +274,8 @@ CalcUserNickLength      ld a, $00                       ;
                         ld hl, MBOX_NICK                ;
                         ld bc, 20                       ; nick max len
                         cpir                            ; find first $00 or bc == 0
-                        jp nz, LenIsMax                  ; yes: set size to 20
-                        inc c
+                        jp nz, LenIsMax                 ; yes: set size to 20
+                        inc c                           ;
                         ld a, 20                        ; no: calc len of 20 - bc
                         sub c                           ; if bc max is 20, b is 0
                         ld (MBOX_NICK_LEN), a           ;
@@ -827,6 +831,8 @@ KeyLoop                 ei                              ;
                         ret nz                          ; yes, return
                         jp KeyLoop                      ; otherwise continue to check for input
 
+MSG_NICK                defb "Nick: "                   ;
+MSG_NICK_LEN            equ $-MSG_NICK                  ;
 BAD_MSG_ID              defb "bad message number"       ;
 BAD_MSG_ID_LEN          equ $-BAD_MSG_ID                ;
 BAD_USER_MSG            defb "<no user registered>"     ;
@@ -835,6 +841,8 @@ Buffer:                 ds 256                          ;
 BufferLen               equ $-Buffer                    ;
 BUFLEN                  defs 1                          ;
 CONNECTED               defb 00                         ;
+CONNECTED_TO            defb "Connected to "            ;
+CONNECTED_TO_LEN        equ $-CONNECTED_TO              ;
 DIR_NAME                defb "/nxtMail2",0              ;
 FILEBUF                 defs 128                        ;
 FILE_NAME               defb "/nxtMail2/nxtMail.dat",0  ;
@@ -860,6 +868,8 @@ MENU_LINE_3             defb "3. View message"          ;
 MENU_LINE_3_LEN         equ $-MENU_LINE_3               ;
 MENU_LINE_4             defb "4. Refresh message count" ;
 MENU_LINE_4_LEN         equ $-MENU_LINE_4               ;
+MESSAGES                defb "Messages: "               ;
+MESSAGES_LEN            equ $-MESSAGES                  ;
 MsgBuffer:              ds 256                          ;
 MsgBufferLen            equ $-MsgBuffer                 ;
 MSG_COUNT               defb $0,$0                      ;
@@ -900,6 +910,8 @@ TARGET_NICK             defs 20, 0                      ;
 TARGET_NICK_BUF         defs 20,' '                     ;
 TARGET_NICK_LEN         defb 0,0                        ; 2 because we'll point BC at it for ldir
 USER_ID_BUF             defs 20, ' '                    ; our input buffer
+VERSION                 defb "nxtMail v0.4 2020 Tadaguff";
+VERSION_LEN             equ $-VERSION                   ;
 WordStart:              ds 5                            ;
 WordLen:                dw $0000                        ;
 
