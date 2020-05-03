@@ -27,6 +27,7 @@ ROM_KEYTABLE            equ $0205                       ; convert from keycode t
 ROM_KEY_SCAN            equ $028e                       ;
 ROM_CHAN_OPEN           equ $1601                       ; THE 'CHAN-OPEN' SUBROUTINE
 ROM_PR_STRING           equ $203c                       ;
+;LAST_K                  equ $5c08                       ; ROM has placed last key pressed at this address
 
 ; Next registers
 NXREG_TURBO_CTL         equ $07                         ; set CPU speed
@@ -92,7 +93,6 @@ pend
 ;
 ; setup screen
 ;
-
 SetupScreen             Border(7)                       ; 7=white
                         OpenOutputChannel(2)            ; ROM: Open channel to upper screen (channel 2)
 SetLayer1_1             ld a, 1                         ; set layer via IDE_MODE using M_P3DOS (needs bank 7)
@@ -117,7 +117,6 @@ ClearLoop               PrintChar(' ')                  ;
 ;
 ; display main menu
 ;
-
 DisplayMenu             call ClearCentre                ;
                         PrintLine(0,0,MENU_LINE_1,20)   ;
                         PrintLine(0,1,MENU_LINE_2,20)   ;
@@ -150,7 +149,6 @@ PrintNick               PrintLine(3,21,MBOX_BLANK_NICK,20) ;
 ;
 ; HandleMenuChoice
 ;
-
 HandleMenuChoice        ei                              ;
                         call ROM_KEY_SCAN               ;
                         di                              ;
@@ -204,8 +202,6 @@ RegisterUserId:         ld a, MBOX_CMD_REGISTER         ;
 ;
 ; process registration response
 ;
-
-
 ProcessRegResponse      ld hl, (ResponseStart)          ;
                         ld a, (hl)                      ;
                         cp MBOX_STATUS_USR_ALR_REG      ; already? no problem
@@ -257,8 +253,6 @@ LenIsMax                ld a, 20                        ;
 ; pos:   | 0      |
 ; size:  | 1      |
 ; field: | status |
-
-
 HandleSend              call ClearCentre                ;
                         call WipeTargetNick             ;
                         call HandleGetTargetNick        ;
@@ -284,7 +278,7 @@ HandleSend              call ClearCentre                ;
                         call ProcessSendResponse        ;
                         ret                             ;
 ;
-;
+; zero pad the remainder of the msg
 ;
 TerminateOutMsg         ld hl, OUT_MESSAGE              ;  set trailing $0s after text for remainder of nick
                         ld a, $09                       ;
@@ -570,33 +564,61 @@ UnregisteredNick        PrintLine(0,16,MSG_UNREG_NICK, MSG_UNREG_NICK_LEN);
 ; field:    | status | messagelen | message    |
 ; condition |        | status=203 | status=203 |
 
-HandleViewMessage       call WipeMsgId                  ;  replace with ' 's
+HandleViewMessage       call WipeMsgId                  ;  fill entire string with ' ' ready for display
                         call HandleGetMsgId             ;  input 1-5 digits
                         call TerminateMsgId             ;  place 0 at end of input if < 5
                         call CountMsgIdLen              ;  populate MSG_ID_BUF_LEN with the num digits in the id
+; debug len
+                        PrintAt(13,12)                  ;
+                        ld a, (MSG_ID_BUF_LEN)          ;
+                        call PrintAHexNoSpace           ;
+
+;; tmp set it manually
+;                        ld hl, MSG_ID_BUF_LEN           ;
+;                        ld (hl), 1                      ;
+;                        inc hl                          ;
+;                        ld (hl), 0                      ;
+
                         DecodeDecimal(MSG_ID_BUF, MSG_ID_BUF_LEN) ; populate hl with the numerical value of the input id
                         ld (MBOX_MSG_ID), hl            ;
-                        ld a, MBOX_CMD_GET_MESSAGE      ; send:
+
+                        PrintAt(13,14)                  ; debug hl
+                        ld a, (MBOX_MSG_ID)             ;
+                        call PrintAHexNoSpace           ;
+                        ld a, (MBOX_MSG_ID+1)           ;
+                        call PrintAHexNoSpace           ;
+                        call PressKeyToContinue         ;
+
+                        ld a, MBOX_CMD_GET_MESSAGE      ;
                         call BuildGetMsgRequest         ;
-                        ld h, 0                         ; result: 0
-                        ld l, 2+1+1+20+2                ; proto+cmd+app+userid+2_id_bytes
+                        ld h, 0                         ;
+                        ld l, 2+1+1+20+2                ; 2x_proto+cmd+app+userid+2x_msg_id
                         ld de, REQUESTBUF               ;
                         call MakeCIPSend                ;
                         call ProcessGetResponse         ;
                         ret                             ;
 
 CountMsgIdLen           ld hl, MSG_ID_BUF               ;
-                        ld a, ' '                       ;
+                        ld a, 0                         ;
                         ld bc, 5                        ; nick max len
-                        cpir                            ; find first $00 or bc == 0
-                        ld a, c                         ;
-                        or b                            ; bc == 0?
-                        jp z, MsgIdLenIsMax             ; yes: set size to 5
+                        cpir                            ; find first ' ' or bc == 0
+                        jp nz, MsgIdLenIsMax            ; z if match
+;debug
+                        ld a,c                          ;
+                        push bc                         ;
+                        push af                         ;
+                        PrintAt(20,13)                  ; debug hl
+                        pop af                          ;
+                        push af                         ;
+                        call PrintAHexNoSpace           ;
+                        pop af                          ;
+                        pop bc                          ;
+                        ; end debug
                         ld a, 5                         ; no: calc len of 5 - bc
-                        sub c                           ; if bc max is 5, b is 0
+                        inc c                           ;
+                        sub c                           ; if bc max is 5, b is 0, so just use c
                         ld (MSG_ID_BUF_LEN), a          ;
                         ret                             ;
-
 MsgIdLenIsMax           ld a, 5                         ;
                         ld (MSG_ID_BUF_LEN), a          ;
                         ret                             ;
@@ -605,17 +627,17 @@ TerminateMsgId          ld hl, MSG_ID_BUF               ;  set trailing $0s afte
                         ld a, ' '                       ;
                         ld bc, 5                        ;
                         cpir                            ;
-                        jp nz,MsgIdNoSpaces             ;
+                        ret nz                          ; z only set if match found, so return if we've nothing to terminate
                         dec hl                          ; found a space so back up
                         inc c                           ; including counter
-                        ld d,h                          ; copy remaining counter's worth of $0s over the rest of the nick
+                        ld d,h                          ; copy remaining counter's worth of $0s over the rest of the msgid
                         ld e,l                          ;
                         inc de                          ;
                         ld (hl), 0                      ;
                         ldir                            ;
-MsgIdNoSpaces           ret                             ;
+                        ret                             ;
 
-WipeMsgId               ld hl, OUT_MESSAGE              ;   fill nick with spaces (0s cause problems when printing to screen)
+WipeMsgId               ld hl, MSG_ID_BUF               ; fill id with spaces (0s cause problems when printing to screen)
                         ld d,h                          ;
                         ld e,l                          ;
                         inc de                          ;
@@ -634,7 +656,7 @@ BuildGetMsgRequest      ld (MBOX_CMD), a                ;
                         ret                             ;
 
 HandleGetMsgId          ld b, 5                         ; collect 1-5 chars for msg id (0-65535)
-                        ld c, $24                       ; used to debounce
+                        ld c, $14                       ; used to debounce (initially '3' from menu choice)
                         ld hl, MSG_ID_BUF               ; which buffer to store chars
                         PrintLine(0,5,MSG_ID_PROMPT, MSG_ID_PROMPT_LEN) ;
 GetMsgIdInputLoop       PrintLine(3,6,MSG_ID_BUF, 5)    ; show current buffer contents
@@ -676,35 +698,37 @@ GetMsgIdDelete          push af                         ; yes
 GetMsgIdNoShiftPressed  ld a,e                          ; do we have a key pressed?
                         cp $ff                          ;
                         jp z, GetMsgIdNoKeyPressed      ; no
-                        cp $21                          ; enter?
+                        cp $21                          ; yes: is it enter?
                         ret z                           ; yes, we're done
-                        push bc                         ; we have a keypress without shift
+                        push bc                         ; no: so we have a keypress without shift
                         push hl                         ;
                         ld b, 0                         ;
                         ld c, a                         ;  bc = keycode value
-                        ld hl, ROM_KEYTABLE             ;  hl = code to ascii lookup table
+                        ld hl, ROM_KEYTABLE             ;  hl = code-to-ascii lookup table
                         add hl, bc                      ;  find ascii given keycode
-                        ld a, (hl)                      ;
-                        pop hl                          ;
-                        pop bc                          ;
+                        ld a, (hl)                      ; a = ascii code for keypress
+                        pop hl                          ; hl = input buffer
+                        pop bc                          ; b=char count c=last keypress
                         cp $30                          ; check if >= 48 (ascii '0')
                         jp c,GetMsgIdInputLoop          ; no, ignore
                         cp $3a                          ; check if < 58 (ascii '9'+1)
                         jp nc,GetMsgIdInputLoop         ; no, ignore
+                        ld d,a                          ; d = copy of ascii val
+                        ld a,e                          ; a = original keypress
                         cp c                            ; does key = last keypress?
                         jp z, GetMsgIdInputLoop         ; yes - debounce
-                        ld c, a                         ; no - store char in c for next check
-                        ld (hl),a                       ; no - store char in buffer
+                        ld c,a                          ; no - store keypress in c for next debounce check
+                        ld a,d                          ; a = ascii version again
+                        ld (hl),a                       ; no - store ascii char in buffer
                         inc hl                          ;
                         dec b                           ; one less char to collect
-                        ld a,b                          ;
-                        cp 0                            ; collected all chars?
+;                        ld a,b                          ;
+;                        cp 0                            ; collected all chars?
                         ld a, c                         ;    (restore after the count check)
-                        ccf                             ; clear c for return status
-                        ret z                           ; yes
+                        ret z                           ; is b now 0? return if so
                         jp GetMsgIdInputLoop            ; no
 
-GetMsgIdNoKeyPressed    cp c                            ; is current keycode same as last?
+GetMsgIdNoKeyPressed    cp c                            ; is current keycode same as last? ($ff if no key pressed)
                         jp z, GetMsgIdInputLoop         ; yes - just loop again
                         ld c, a                         ; no, update c to show change
                         jp GetMsgIdInputLoop            ;
