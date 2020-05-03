@@ -118,10 +118,11 @@ ClearLoop               PrintChar(' ')                  ;
 ; display main menu
 ;
 DisplayMenu             call ClearCentre                ;
-                        PrintLine(0,0,MENU_LINE_1,20)   ;
-                        PrintLine(0,1,MENU_LINE_2,20)   ;
-                        PrintLine(0,2,MENU_LINE_3,15)   ;
-                        PrintLine(0,3,MENU_LINE_4,24)   ;
+                        call DrawMenuBox                ;
+                        PrintLine(1,1,MENU_LINE_1,20)   ;
+                        PrintLine(1,2,MENU_LINE_2,20)   ;
+                        PrintLine(1,3,MENU_LINE_3,15)   ;
+                        PrintLine(1,4,MENU_LINE_4,24)   ;
                         PrintLine(0,20,MboxHost,23)     ;
                         ld a, (CONNECTED)               ;
                         cp 1                            ;
@@ -146,7 +147,30 @@ PrintNick               PrintLine(3,21,MBOX_BLANK_NICK,20) ;
                         PrintLineLenVar(6,21,MBOX_NICK, MBOX_NICK_LEN) ;
                         ret                             ;
 
-;
+DrawMenuBox             PrintLine(0,0,TOP_ROW,51)       ;
+                        PrintAt(0,1)                    ;
+                        PrintChar(138)                  ;
+                        PrintAt(50,1)                   ;
+                        PrintChar(133)                  ;
+
+                        PrintAt(0,2)                    ;
+                        PrintChar(138)                  ;
+                        PrintAt(50,2)                   ;
+                        PrintChar(133)                  ;
+
+                        PrintAt(0,3)                    ;
+                        PrintChar(138)                  ;
+                        PrintAt(50,3)                   ;
+                        PrintChar(133)                  ;
+
+                        PrintAt(0,4)                    ;
+                        PrintChar(138)                  ;
+                        PrintAt(50,4)                   ;
+                        PrintChar(133)                  ;
+
+                        PrintLine(0,5,BOT_ROW,51)       ;
+                        ret
+
 ; HandleMenuChoice
 ;
 HandleMenuChoice        ei                              ;
@@ -165,8 +189,8 @@ HandleMenuChoice        ei                              ;
                         jp z, HandleCount               ;
 EndLoop                 jp HandleMenuChoice             ;
 
-HandleRegister          PrintLine(0,5,REG_PROMPT, 26)   ;
-                        PrintLine(0,6,PROMPT, 2)        ;
+HandleRegister          PrintLine(0,6,REG_PROMPT, 26)   ;
+                        PrintLine(0,7,PROMPT, 2)        ;
                         call WipeUserId                 ;
                         call HandleUserIdInput          ;
                         cp $20                          ; was last key pressed a space?
@@ -348,8 +372,8 @@ BuildSendMsgRequest     ld (MBOX_CMD), a                ;
 HandleGetTargetNick     ld b, 20                        ; collect 20 chars for userId
                         ld c, $24                       ; used to debounce
                         ld hl, TARGET_NICK_BUF          ; which buffer to store chars
-                        PrintLine(0,5,NICK_PROMPT, NICK_PROMPT_LEN) ;
-GetNickInputLoop        PrintLine(3,6,TARGET_NICK_BUF, 20) ; show current buffer contents
+                        PrintLine(0,6,NICK_PROMPT, NICK_PROMPT_LEN) ;
+GetNickInputLoop        PrintLine(3,7,TARGET_NICK_BUF, 20) ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
                         ei                              ;
@@ -424,8 +448,8 @@ GetNickNoKeyPressed     cp c                            ; is current keycode sam
 HandleGetOutMsg         ld b, 200                       ; collect 20 chars for userId
                         ld c, $24                       ; used to debounce
                         ld hl, OUT_MESSAGE              ; which buffer to store chars
-                        PrintLine(0,5,MSG_GET_MSG_PROMPT, MSG_GET_MSG_PROMPT_LEN) ;
-GetMsgInputLoop         PrintLine(3,6,OUT_MESSAGE, 200) ; show current buffer contents
+                        PrintLine(0,6,MSG_GET_MSG_PROMPT, MSG_GET_MSG_PROMPT_LEN) ;
+GetMsgInputLoop         PrintLine(3,7,OUT_MESSAGE, 200) ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
                         ei                              ;
@@ -670,8 +694,8 @@ BuildGetMsgRequest      ld (MBOX_CMD), a                ;
 HandleGetMsgId          ld b, 5                         ; collect 1-5 chars for msg id (0-65535)
                         ld c, $14                       ; used to debounce (initially '3' from menu choice)
                         ld hl, MSG_ID_BUF               ; which buffer to store chars
-                        PrintLine(0,5,MSG_ID_PROMPT, MSG_ID_PROMPT_LEN) ;
-GetMsgIdInputLoop       PrintLine(3,6,MSG_ID_BUF, 5)    ; show current buffer contents
+                        PrintLine(0,6,MSG_ID_PROMPT, MSG_ID_PROMPT_LEN) ;
+GetMsgIdInputLoop       PrintLine(3,7,MSG_ID_BUF, 5)    ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
                         ei                              ;
@@ -910,6 +934,12 @@ NICK_PROMPT             defb "To nickname: (20 chars. Enter to end)" ;
 NICK_PROMPT_LEN         equ $-NICK_PROMPT               ;
 MSG_GET_MSG_PROMPT      defb "Message body: (200 max. Enter to end)";
 MSG_GET_MSG_PROMPT_LEN  equ $-MSG_GET_MSG_PROMPT        ;
+TOP_ROW                 defb 139,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131;
+                        defb 131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131;
+                        defb 131,131,131,131,131,131,131,131,131,131,135;
+BOT_ROW                 defb 142,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140;
+                        defb 140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140;
+                        defb 140,140,140,140,140,140,140,140,140,140,141;
 
                         include "esp.asm"               ;
                         include "constants.asm"         ;

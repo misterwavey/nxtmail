@@ -30,28 +30,28 @@ pend
 
 Err                     proc                            ;
                         ;  "<-Longest valid erro>", 'r'|128
-HostLen:                db "1 HOSTNAME too lon",    'g'|128;
-ESPComms1:              db "2 WiFi comms erro",     'r'|128 ;
-ESPComms2:              db "3 WiFi comms erro",     'r'|128 ;
-ESPComms3:              db "4 WiFi comms erro",     'r'|128 ;
-ESPComms4:              db "5 WiFi comms erro",     'r'|128 ;
-ESPComms5:              db "6 WiFi comms erro",     'r'|128 ;
-ESPComms6:              db "7 WiFi comms erro",     'r'|128 ;
-ESPConn1:               db "8 Server conn erro",    'r'|128;
-ESPConn2:               db "9 Server conn erro",    'r'|128;
-ESPConn3:               db "A Server conn erro",    'r'|128;
-ESPConn4:               db "B Server conn erro",    'r'|128;
-ZoneLen:                db "C ZONE too lon",        'g'|128    ;
+HostLen:                db "1 HOSTNAME too lon", 'g'|128;
+ESPComms1:              db "2 WiFi comms erro", 'r'|128 ;
+ESPComms2:              db "3 WiFi comms erro", 'r'|128 ;
+ESPComms3:              db "4 WiFi comms erro", 'r'|128 ;
+ESPComms4:              db "5 WiFi comms erro", 'r'|128 ;
+ESPComms5:              db "6 WiFi comms erro", 'r'|128 ;
+ESPComms6:              db "7 WiFi comms erro", 'r'|128 ;
+ESPConn1:               db "8 Server conn erro", 'r'|128;
+ESPConn2:               db "9 Server conn erro", 'r'|128;
+ESPConn3:               db "A Server conn erro", 'r'|128;
+ESPConn4:               db "B Server conn erro", 'r'|128;
+ZoneLen:                db "C ZONE too lon", 'g'|128    ;
 Break:                  db "D BREAK - CONT repeat", 's'|128;
-NotNext:                db "E Next require",        'd'|128    ;
-ESPTimeout:             db "F WiFi/server timeou",  't'|128;
-DirCreate:              db "G Error creating di",   'r'|128;
-FileCreate:             db "H Error creating fil",  'e'|128;
-FileWrite:              db "I Error writing fil",   'e'|128 ;
-FileRead:               db "J Error reading fil",   'e'|128 ;
-FileClose:              db "K Error closing fil",   'e'|128 ;
-BadResp21:              db "c Invalid respons",     'e'|128;
-CoreMin:                db "Core 3.00.04 require",  'd'|128;
+NotNext:                db "E Next require", 'd'|128    ;
+ESPTimeout:             db "F WiFi/server timeou", 't'|128;
+DirCreate:              db "G Error creating di", 'r'|128;
+FileCreate:             db "H Error creating fil", 'e'|128;
+FileWrite:              db "I Error writing fil", 'e'|128 ;
+FileRead:               db "J Error reading fil", 'e'|128 ;
+FileClose:              db "K Error closing fil", 'e'|128 ;
+BadResp21:              db "c Invalid respons", 'e'|128 ;
+CoreMin:                db "Core 3.00.04 require", 'd'|128;
 pend
 
 Timings:                proc Table:                     ;
@@ -121,20 +121,13 @@ PrintBufferLen          proc                            ;
 pend
 
 PrintAHexNoSpace        proc                            ;
-                        //SafePrintStart()              ;
                         ld b, a                         ;
-                        //if DisableScroll              ;
-                        //ld a, 24                      ; Set upper screen to not scroll
-                        //ld (SCR_CT), a                ; for another 24 rows of printing
-                        //ld a, b                       ;
-                        //endif                         ;
                         and $F0                         ;
                         swapnib                         ;
                         call Print                      ;
                         ld a, b                         ;
                         and $0F                         ;
                         call Print                      ;
-                        //SafePrintEnd()                ;
                         ret                             ;
 Print:                  cp 10                           ;
                         ld c, '0'                       ;

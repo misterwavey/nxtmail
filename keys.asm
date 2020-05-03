@@ -34,9 +34,9 @@
 ;
 
 HandleUserIdInput       ld b, 20                        ; collect 20 chars for userId
-                        ld c, $24                       ; used to debounce
-                        ld hl, USER_ID_BUF                ; which buffer to store chars
-InputLoop               PrintLine(3,5,USER_ID_BUF, 20)    ; show current buffer contents
+                        ld c, $31                       ; used to debounce
+                        ld hl, USER_ID_BUF              ; which buffer to store chars
+InputLoop               PrintLine(3,7,USER_ID_BUF, 20)  ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
                         call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
