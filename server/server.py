@@ -266,7 +266,7 @@ def handle_get_message_count(appId, userId, addr, db):
       response = build_response(STATUS_INTERNAL_ERROR)
       return response
     else:
-      messageCount = 258 #results[0] # testing 2byte response
+      messageCount = results[0] 
       print(type(messageCount))
       print ("<{threadName}-{addr}> userId has {messageCount} messages for appId {appId} in db".format(**locals()))
       response = bytes([STATUS_COUNT_OK] + list(messageCount.to_bytes(2, byteorder="little"))) # todo OverflowError raised if num > 2 bytes

@@ -143,7 +143,7 @@ PrintConnected          ld hl,(MSG_COUNT)               ;
                         jp PrintNick                    ;
 PrintZeroMessages       PrintLine(1,21,MSG_COUNT_ZERO,1);
 PrintNick               PrintLine(3,21,MBOX_BLANK_NICK,20) ;
-                        PrintLineLenVar(3,21,MBOX_NICK, MBOX_NICK_LEN) ;
+                        PrintLineLenVar(6,21,MBOX_NICK, MBOX_NICK_LEN) ;
                         ret                             ;
 
 ;
@@ -797,12 +797,14 @@ ProcessMsgCountResponse ld hl, (ResponseStart)          ;
                         inc hl                          ; move past status
                         ld a, (hl)                      ; get count
                         ld (MSG_COUNT), a               ; store
-                        ; inc hl                          ; get 2nd byte
-                        ; ld a, (hl)                      ;
-                        ; ld (MSG_COUNT+1), a             ; store 2nd
+                        inc hl                          ; get 2nd byte
+                        ld a, (hl)                      ;
+                        ld (MSG_COUNT+1), a             ; store 2nd
 
                         PrintAt(15,15)                  ;
                         ld a, (MSG_COUNT)               ; pull 1st back
+                        call PrintAHexNoSpace           ; display
+                        ld a, (MSG_COUNT+1)             ; pull 2nds back
                         call PrintAHexNoSpace           ; display
                         ret                             ;
 PrintProblem            PrintLine(6,21,BAD_USER_MSG, BAD_USER_MSG_LEN) ;
