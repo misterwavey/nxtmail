@@ -16,7 +16,7 @@
 
 Msg                     proc                            ;
 InitESP:                db "Initialising WiFi...", CR, 0;
-//TestVer:              db "Test v", TestVersion, CR, 0 ;
+
 InitDone:               db "Initialised", CR, 0         ;
 Connect1:               db "Connecting to ", 0          ;
 Connect2:               db "...", CR, 0                 ;

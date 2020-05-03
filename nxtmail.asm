@@ -25,9 +25,8 @@ IDE_MODE                equ $01d5                       ; used to set the charac
 ; Spectrum ROM routines
 ROM_KEYTABLE            equ $0205                       ; convert from keycode to ascii
 ROM_KEY_SCAN            equ $028e                       ;
-ROM_CHAN_OPEN           equ $1601                       ; THE 'CHAN-OPEN' SUBROUTINE
+ROM_CHAN_OPEN           equ $1601                       ; to allow us to print to the upper screen
 ROM_PR_STRING           equ $203c                       ;
-;LAST_K                  equ $5c08                       ; ROM has placed last key pressed at this address
 
 ; Next registers
 NXREG_TURBO_CTL         equ $07                         ; set CPU speed
@@ -76,10 +75,11 @@ Main                    proc                            ;
                         nextreg NXREG_TURBO_CTL, CPU_28 ; Next Turbo Control Register $07: 11b is 28MHz
                         call MakeCIPStart               ; setup comms to server
 
-MainLoop                call SetupScreen                ;
+                        call SetupScreen                ;
                         call LoadFile                   ; obtain any previously saved userid and register userid with server
                         call DisplayMenu                ;
-                        call HandleMenuChoice           ;
+MainLoop                call HandleMenuChoice           ;
+                        call ClearCentre                ;
 
                         jp MainLoop                     ;
 pend
@@ -105,9 +105,9 @@ SetFontWidth            PrintChar(30)                   ; set char width in pixe
                         PrintChar(5)                    ; to 5 (51 chars wide)
                         ret                             ;
 
-ClearCentre             PrintAt(0,9)                    ;
-                        ld bc, 51*10                    ;
-ClearLoop               PrintChar(' ')                  ;
+ClearCentre             PrintAt(0,7)                    ;
+                        ld bc, 42*13                    ; 52 cols * 13 rows. todo: ldir this?
+ClearLoop               PrintChar('x')                  ;
                         dec bc                          ;
                         ld a,c                          ;
                         or b                            ;
@@ -117,17 +117,21 @@ ClearLoop               PrintChar(' ')                  ;
 ;
 ; display main menu
 ;
-DisplayMenu             call ClearCentre                ;
-                        call DrawMenuBox                ;
-                        PrintLine(1,1,MENU_LINE_1,20)   ;
-                        PrintLine(1,2,MENU_LINE_2,20)   ;
-                        PrintLine(1,3,MENU_LINE_3,15)   ;
-                        PrintLine(1,4,MENU_LINE_4,24)   ;
-                        PrintLine(0,20,MboxHost,23)     ;
+DisplayMenu             call DrawMenuBox                ;
+                        PrintLine(1,1,MENU_LINE_1,MENU_LINE_1_LEN) ;
+                        PrintLine(1,2,MENU_LINE_2,MENU_LINE_2_LEN) ;
+                        PrintLine(1,3,MENU_LINE_3,MENU_LINE_3_LEN) ;
+                        PrintLine(1,4,MENU_LINE_4,MENU_LINE_4_LEN) ;
+                        call DisplayStatus              ;
+                        ret                             ;
+
+DisplayStatus           PrintLine(0,22,BLANK_ROW,51)    ;
+                        PrintLine(0,23,BLANK_ROW,51)    ;
+                        PrintLine(0,22,MboxHost,MboxHostLen) ;
                         ld a, (CONNECTED)               ;
                         cp 1                            ;
                         jp z, PrintConnected            ;
-                        PrintLine(MboxHostLen+1,18,OFFLINE,7);
+                        PrintLine(MboxHostLen+1,18,OFFLINE,OFFLINE_LEN);
                         ret                             ;
 PrintConnected          ld hl,(MSG_COUNT)               ;
                         inc (hl)                        ;
@@ -140,11 +144,11 @@ PrintConnected          ld hl,(MSG_COUNT)               ;
                         ld de, MSG_COUNT_BUF            ;
                         ld hl, (WordStart)              ;
                         ldir                            ;
-                        PrintLineLenVar(0,21,MSG_COUNT_BUF,WordLen) ;
+                        PrintLineLenVar(0,23,MSG_COUNT_BUF,WordLen) ;
                         jp PrintNick                    ;
-PrintZeroMessages       PrintLine(1,21,MSG_COUNT_ZERO,1);
-PrintNick               PrintLine(3,21,MBOX_BLANK_NICK,20) ;
-                        PrintLineLenVar(6,21,MBOX_NICK, MBOX_NICK_LEN) ;
+PrintZeroMessages       PrintLine(1,23,MSG_COUNT_ZERO,1);
+PrintNick               PrintLine(6,23,MBOX_BLANK_NICK,20) ;
+                        PrintLineLenVar(6,23,MBOX_NICK, MBOX_NICK_LEN) ;
                         ret                             ;
 
 DrawMenuBox             PrintLine(0,0,TOP_ROW,51)       ;
@@ -169,7 +173,7 @@ DrawMenuBox             PrintLine(0,0,TOP_ROW,51)       ;
                         PrintChar(133)                  ;
 
                         PrintLine(0,5,BOT_ROW,51)       ;
-                        ret
+                        ret                             ;
 
 ; HandleMenuChoice
 ;
@@ -189,19 +193,23 @@ HandleMenuChoice        ei                              ;
                         jp z, HandleCount               ;
 EndLoop                 jp HandleMenuChoice             ;
 
-HandleRegister          PrintLine(0,6,REG_PROMPT, 26)   ;
-                        PrintLine(0,7,PROMPT, 2)        ;
+HandleRegister          PrintLine(0,7,REG_PROMPT, REG_PROMPT_LEN) ;
+                        PrintLine(0,8,PROMPT, PROMPT_LEN) ;
                         call WipeUserId                 ;
                         call HandleUserIdInput          ;
-                        cp $20                          ; was last key pressed a space?
-                        ret z                           ; yes. back to menu - input was cancelled by break
-                        PrintLine(0,8,OK, 2)            ;
+                        ret c                           ; back to menu - input was cancelled by break
+                        call PopulateMboxUserId         ;
                         call RegisterUserId             ;
-                        PrintLine(0,8,OK, 2)            ;
                         call PressKeyToContinue         ;
                         call ClearCentre                ;
+                        call DisplayStatus              ;
                         ret                             ;
 
+PopulateMboxUserId      ld hl, USER_ID_BUF              ; source
+                        ld de, MBOX_USER_ID             ;
+                        ld bc, 20                       ;
+                        ldir                            ;
+                        ret                             ;
 ;
 ; register
 ;
@@ -242,7 +250,7 @@ ProcessRegResponse      ld hl, (ResponseStart)          ;
                         cp MBOX_STATUS_REGISTER_OK      ; ok? cool
                         jp z, PrintNickname             ;
 PrintBadUser            PrintLine(6,21,MBOX_BLANK_NICK, 20);
-                        PrintLine(6,21,BAD_USER_MSG, 20) ; otherwise
+                        PrintLine(6,21,BAD_USER_MSG, BAD_USER_MSG_LEN) ; otherwise
                         ret                             ;
 PrintNickname           ld a, 1                         ;
                         ld (CONNECTED), a               ;
@@ -262,9 +270,8 @@ CalcUserNickLength      ld a, $00                       ;
                         ld hl, MBOX_NICK                ;
                         ld bc, 20                       ; nick max len
                         cpir                            ; find first $00 or bc == 0
-                        ld a, c                         ;
-                        or b                            ; bc == 0?
-                        jp z, LenIsMax                  ; yes: set size to 20
+                        jp nz, LenIsMax                  ; yes: set size to 20
+                        inc c
                         ld a, 20                        ; no: calc len of 20 - bc
                         sub c                           ; if bc max is 20, b is 0
                         ld (MBOX_NICK_LEN), a           ;
@@ -364,7 +371,7 @@ BuildSendMsgRequest     ld (MBOX_CMD), a                ;
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ;
                         WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
-                        WriteString(USER_ID_BUF,20)     ; userid
+                        WriteString(MBOX_USER_ID,20)    ; userid
                         WriteString(TARGET_NICK_BUF,20) ;
                         WriteString(OUT_MESSAGE,200)    ;
                         ret                             ;
@@ -372,8 +379,8 @@ BuildSendMsgRequest     ld (MBOX_CMD), a                ;
 HandleGetTargetNick     ld b, 20                        ; collect 20 chars for userId
                         ld c, $24                       ; used to debounce
                         ld hl, TARGET_NICK_BUF          ; which buffer to store chars
-                        PrintLine(0,6,NICK_PROMPT, NICK_PROMPT_LEN) ;
-GetNickInputLoop        PrintLine(3,7,TARGET_NICK_BUF, 20) ; show current buffer contents
+                        PrintLine(0,7,NICK_PROMPT, NICK_PROMPT_LEN) ;
+GetNickInputLoop        PrintLine(3,8,TARGET_NICK_BUF, 20) ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
                         ei                              ;
@@ -448,8 +455,8 @@ GetNickNoKeyPressed     cp c                            ; is current keycode sam
 HandleGetOutMsg         ld b, 200                       ; collect 20 chars for userId
                         ld c, $24                       ; used to debounce
                         ld hl, OUT_MESSAGE              ; which buffer to store chars
-                        PrintLine(0,6,MSG_GET_MSG_PROMPT, MSG_GET_MSG_PROMPT_LEN) ;
-GetMsgInputLoop         PrintLine(3,7,OUT_MESSAGE, 200) ; show current buffer contents
+                        PrintLine(0,7,MSG_GET_MSG_PROMPT, MSG_GET_MSG_PROMPT_LEN) ;
+GetMsgInputLoop         PrintLine(3,8,OUT_MESSAGE, 200) ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
                         ei                              ;
@@ -531,7 +538,7 @@ ProcessSendResponse     ld hl, (ResponseStart)          ;
                         ld a, (hl)                      ;
                         cp MBOX_STATUS_OK               ;
                         jp nz, PrintProblemSend         ;
-                        PrintLine(15, 15, OK, 2)        ;
+                        PrintLine(15, 15, OK, OK_LEN)   ;
                         call PressKeyToContinue         ;
                         ret                             ;
 PrintProblemSend        PrintLine(15,15, MSG_ERR_SENDING,MSG_ERR_SENDING_LEN);
@@ -542,7 +549,7 @@ PrintProblemSend        PrintLine(15,15, MSG_ERR_SENDING,MSG_ERR_SENDING_LEN);
 ;
 ; handle check registered nickname
 ; ENTRY
-;    USER_ID_BUF is set to valid userid
+;    MBOX_USER_ID is set to valid userid
 ;    TARGET_NICK_BUF is set to $0 terminated nick max 20 len
 ; EXIT
 ;    Z set if nick is unregistered with nextmail otherwise Z is unset
@@ -570,7 +577,7 @@ BuildNickRequest        ld (MBOX_CMD), a                ;
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ;
                         WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
-                        WriteString(USER_ID_BUF,20)     ; userid
+                        WriteString(MBOX_USER_ID,20)    ; userid
                         WriteString(TARGET_NICK_BUF,20) ;
                         ret                             ;
 
@@ -601,28 +608,9 @@ HandleViewMessage       call WipeMsgId                  ;  fill entire string wi
                         call HandleGetMsgId             ;  input 1-5 digits
                         call TerminateMsgId             ;  place 0 at end of input if < 5
                         call CountMsgIdLen              ;  populate MSG_ID_BUF_LEN with the num digits in the id
-; debug len
-                        PrintAt(13,12)                  ;
-                        ld a, (MSG_ID_BUF_LEN)          ;
-                        call PrintAHexNoSpace           ;
-
-;; tmp set it manually
-;                        ld hl, MSG_ID_BUF_LEN           ;
-;                        ld (hl), 1                      ;
-;                        inc hl                          ;
-;                        ld (hl), 0                      ;
 
                         DecodeDecimal(MSG_ID_BUF, MSG_ID_BUF_LEN) ; populate hl with the numerical value of the input id
-;                        ld a,l                          ; swap LSB-MSB
-;                        ld l,h                          ;
-;                        ld h,a                          ;
                         ld (MBOX_MSG_ID), hl            ;
-
-                        PrintAt(13,14)                  ; debug hl
-                        ld a, (MBOX_MSG_ID)             ;
-                        call PrintAHexNoSpace           ;
-                        ld a, (MBOX_MSG_ID+1)           ;
-                        call PrintAHexNoSpace           ;
                         call PressKeyToContinue         ;
 
                         ld a, MBOX_CMD_GET_MESSAGE      ;
@@ -639,17 +627,6 @@ CountMsgIdLen           ld hl, MSG_ID_BUF               ;
                         ld bc, 5                        ; nick max len
                         cpir                            ; find first ' ' or bc == 0
                         jp nz, MsgIdLenIsMax            ; z if match
-;debug
-                        ld a,c                          ;
-                        push bc                         ;
-                        push af                         ;
-                        PrintAt(20,13)                  ; debug hl
-                        pop af                          ;
-                        push af                         ;
-                        call PrintAHexNoSpace           ;
-                        pop af                          ;
-                        pop bc                          ;
-                        ; end debug
                         ld a, 5                         ; no: calc len of 5 - bc
                         inc c                           ;
                         sub c                           ; if bc max is 5, b is 0, so just use c
@@ -687,15 +664,15 @@ BuildGetMsgRequest      ld (MBOX_CMD), a                ;
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ; cmd is get message by id
                         WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
-                        WriteString(USER_ID_BUF,20)     ; userid
+                        WriteString(MBOX_USER_ID,20)    ; userid
                         WriteString(MBOX_MSG_ID,2)      ; param 1 is msg id
                         ret                             ;
 
 HandleGetMsgId          ld b, 5                         ; collect 1-5 chars for msg id (0-65535)
                         ld c, $14                       ; used to debounce (initially '3' from menu choice)
                         ld hl, MSG_ID_BUF               ; which buffer to store chars
-                        PrintLine(0,6,MSG_ID_PROMPT, MSG_ID_PROMPT_LEN) ;
-GetMsgIdInputLoop       PrintLine(3,7,MSG_ID_BUF, 5)    ; show current buffer contents
+                        PrintLine(0,7,MSG_ID_PROMPT, MSG_ID_PROMPT_LEN) ;
+GetMsgIdInputLoop       PrintLine(3,8,MSG_ID_BUF, 5)    ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
                         ei                              ;
@@ -758,8 +735,6 @@ GetMsgIdNoShiftPressed  ld a,e                          ; do we have a key press
                         ld (hl),a                       ; no - store ascii char in buffer
                         inc hl                          ;
                         dec b                           ; one less char to collect
-;                        ld a,b                          ;
-;                        cp 0                            ; collected all chars?
                         ld a, c                         ;    (restore after the count check)
                         ret z                           ; is b now 0? return if so
                         jp GetMsgIdInputLoop            ; no
@@ -768,10 +743,6 @@ GetMsgIdNoKeyPressed    cp c                            ; is current keycode sam
                         jp z, GetMsgIdInputLoop         ; yes - just loop again
                         ld c, a                         ; no, update c to show change
                         jp GetMsgIdInputLoop            ;
-
-;HandleGetMsgId          ld a, 1                         ;  TODO get user input
-;                        ld (MBOX_MSG_ID), a             ;
-;                        ret                             ;
 
 ProcessGetResponse      ld hl, (ResponseStart)          ;  status byte
                         ld a, (hl)                      ;
@@ -824,12 +795,6 @@ ProcessMsgCountResponse ld hl, (ResponseStart)          ;
                         inc hl                          ; get 2nd byte
                         ld a, (hl)                      ;
                         ld (MSG_COUNT+1), a             ; store 2nd
-
-                        PrintAt(15,15)                  ;
-                        ld a, (MSG_COUNT)               ; pull 1st back
-                        call PrintAHexNoSpace           ; display
-                        ld a, (MSG_COUNT+1)             ; pull 2nds back
-                        call PrintAHexNoSpace           ; display
                         ret                             ;
 PrintProblem            PrintLine(6,21,BAD_USER_MSG, BAD_USER_MSG_LEN) ;
                         ret                             ;
@@ -847,10 +812,10 @@ BuildStandardRequest    ld (MBOX_CMD), a                ;
                         WriteString(MBOX_PROTOCOL_BYTES, 2);
                         WriteString(MBOX_CMD, 1)        ;
                         WriteString(MBOX_APP_ID, 1)     ; 1=nextmail
-                        WriteString(USER_ID_BUF,20)     ; userid
+                        WriteString(MBOX_USER_ID,20)    ; userid
                         ret                             ;
 
-PressKeyToContinue      PrintLine(0,17, MSG_PRESS_KEY, MSG_PRESS_KEY_LEN);
+PressKeyToContinue      PrintLine(10,17, MSG_PRESS_KEY, MSG_PRESS_KEY_LEN);
 KeyLoop                 ei                              ;
                         call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
                         di                              ;
@@ -862,84 +827,89 @@ KeyLoop                 ei                              ;
                         ret nz                          ; yes, return
                         jp KeyLoop                      ; otherwise continue to check for input
 
-MENU_LINE_1             defb "1. Register userId  "     ;
-MENU_LINE_2             defb "2. Send message     "     ;
-MENU_LINE_3             defb "3. view message"          ;
-MENU_LINE_4             defb "4. refresh message count" ;
-REG_PROMPT              defb "Enter your Next Mailbox Id";
-REG_PROMPT_LEN          equ $-REG_PROMPT                ;
-PROMPT                  defb "> "                       ;
-OK                      defb "OK"                       ;
+BAD_MSG_ID              defb "bad message number"       ;
+BAD_MSG_ID_LEN          equ $-BAD_MSG_ID                ;
 BAD_USER_MSG            defb "<no user registered>"     ;
 BAD_USER_MSG_LEN        equ $-BAD_USER_MSG              ;
-
-USER_ID_BUF             defs 128, ' '                   ; our input buffer
+Buffer:                 ds 256                          ;
+BufferLen               equ $-Buffer                    ;
 BUFLEN                  defs 1                          ;
-FILEBUF                 defs 128                        ;
-
-FILE_NAME               defb "/nxtMail2/nxtMail.dat",0  ;
+CONNECTED               defb 00                         ;
 DIR_NAME                defb "/nxtMail2",0              ;
-MboxHost:               defb "nextmailbox.spectrum.cl"  ;
+FILEBUF                 defs 128                        ;
+FILE_NAME               defb "/nxtMail2/nxtMail.dat",0  ;
+IN_MSG_LEN              defb 0,0                        ; 2 because we'll point BC at it for ldir
+IN_MESSAGE              defs 200                        ;
+MboxHost                defb "nextmailbox.spectrum.cl"  ;
 MboxHostLen             equ $-MboxHost                  ;
-OFFLINE                 defb "offline"                  ;
-ONLINE_AS               defb "as "                      ;
-MESSAGES                defb "000 messages"             ;
 MboxPort:               defb "8361"                     ;
 MboxPortLen:            equ $-MboxPort                  ;
-
-MBOX_PROTOCOL_BYTES     defb $00, $01                   ;
 MBOX_APP_ID             defb $01                        ; nxtmail is app 1 in db
+MBOX_BLANK_NICK         defs 20,' '                     ;
 MBOX_CMD                defb $01                        ;
+MBOX_MSG_ID             defb 0,0                        ; 2 bytes for 0-65535
 MBOX_NICK               defs 20                         ;
 MBOX_NICK_LEN           defb 00,00                      ;
-MBOX_BLANK_NICK         defs 20,' '                     ;
-CONNECTED               defb 00                         ;
+MBOX_PROTOCOL_BYTES     defb $00, $01                   ;
+MBOX_USER_ID            defs 20                         ; the one used for transmission to allow the working buffer to be reset
+MENU_LINE_1             defb "1. Connect/Register userId" ;
+MENU_LINE_1_LEN         equ $-MENU_LINE_1               ;
+MENU_LINE_2             defb "2. Send message"          ;
+MENU_LINE_2_LEN         equ $-MENU_LINE_2               ;
+MENU_LINE_3             defb "3. View message"          ;
+MENU_LINE_3_LEN         equ $-MENU_LINE_3               ;
+MENU_LINE_4             defb "4. Refresh message count" ;
+MENU_LINE_4_LEN         equ $-MENU_LINE_4               ;
+MsgBuffer:              ds 256                          ;
+MsgBufferLen            equ $-MsgBuffer                 ;
 MSG_COUNT               defb $0,$0                      ;
 MSG_COUNT_BUF           defs 6                          ;
 MSG_COUNT_ZERO          defb '0'                        ;
-SENDBUF                 defb 255                        ;
-TARGET_NICK             defs 20, 0                      ;
-OUT_MESSAGE             ds 200,$09                      ; gets printed so fill with tab
-REQUESTBUF              ds 256                          ;
-RequestLenAddr:         dw $0000                        ;
-RequestBufAddr:         dw $0000                        ;
-RequestLen              defb 0,0                        ;
-WordStart:              ds 5                            ;
-WordLen:                dw $0000                        ;
-ResponseStart:          dw $0000                        ;
-ResponseLen:            dw $0000                        ;
-Prescaler:              ds 3                            ;
-Buffer:                 ds 256                          ;
-BufferLen               equ $-Buffer                    ;
-MsgBuffer:              ds 256                          ;
-MsgBufferLen            equ $-MsgBuffer                 ;
-TARGET_NICK_BUF         defs 20,' '                     ;
-TARGET_NICK_LEN         defb 0,0                        ; 2 because we'll point BC at it for ldir
-MSG_ID_PROMPT           defb "Message number (0-65535. Enter to end)" ;
-MSG_ID_PROMPT_LEN       equ $-MSG_ID_PROMPT             ;
-MSG_ID_BUF              defs 5,' '                      ; '0'-'65535'
-MSG_ID_BUF_LEN          defb 0                          ; length of the digits entered 1-5
-MBOX_MSG_ID             defb 0,0                        ; 2 bytes for 0-65535
-IN_MSG_LEN              defb 0,0                        ; 2 because we'll point BC at it for ldir
-IN_MESSAGE              defs 200                        ;
-BAD_MSG_ID              defb "bad message number"       ;
-BAD_MSG_ID_LEN          equ $-BAD_MSG_ID                ;
 MSG_ERR_SENDING         defb "Error sending message"    ;
 MSG_ERR_SENDING_LEN     equ $-MSG_ERR_SENDING           ;
+MSG_GET_MSG_PROMPT      defb "Message body: (200 max. Enter to end)";
+MSG_GET_MSG_PROMPT_LEN  equ $-MSG_GET_MSG_PROMPT        ;
+MSG_ID_BUF              defs 5,' '                      ; '0'-'65535'
+MSG_ID_BUF_LEN          defb 0                          ; length of the digits entered 1-5
+MSG_ID_PROMPT           defb "Message number (1-65535. Enter to end)" ;
+MSG_ID_PROMPT_LEN       equ $-MSG_ID_PROMPT             ;
 MSG_PRESS_KEY           defb "Press any key to continue";
 MSG_PRESS_KEY_LEN       equ $-MSG_PRESS_KEY             ;
 MSG_UNREG_NICK          defb "Nick is unregistered with NxtMail";
 MSG_UNREG_NICK_LEN      equ $-MSG_UNREG_NICK            ;
 NICK_PROMPT             defb "To nickname: (20 chars. Enter to end)" ;
 NICK_PROMPT_LEN         equ $-NICK_PROMPT               ;
-MSG_GET_MSG_PROMPT      defb "Message body: (200 max. Enter to end)";
-MSG_GET_MSG_PROMPT_LEN  equ $-MSG_GET_MSG_PROMPT        ;
+OFFLINE                 defb "offline"                  ;
+OFFLINE_LEN             equ $-OFFLINE                   ;
+OK                      defb "OK"                       ;
+OK_LEN                  equ $-OK                        ;
+OUT_MESSAGE             ds 200,$09                      ; gets printed so fill with tab
+Prescaler:              ds 3                            ;
+PROMPT                  defb "> "                       ;
+PROMPT_LEN              equ $-PROMPT                    ;
+REG_PROMPT              defb "Enter your Next Mailbox Id";
+REG_PROMPT_LEN          equ $-REG_PROMPT                ;
+REQUESTBUF              ds 256                          ;
+RequestLenAddr:         dw $0000                        ;
+RequestBufAddr:         dw $0000                        ;
+RequestLen              defb 0,0                        ;
+ResponseStart:          dw $0000                        ;
+ResponseLen:            dw $0000                        ;
+SENDBUF                 defb 255                        ;
+TARGET_NICK             defs 20, 0                      ;
+TARGET_NICK_BUF         defs 20,' '                     ;
+TARGET_NICK_LEN         defb 0,0                        ; 2 because we'll point BC at it for ldir
+USER_ID_BUF             defs 20, ' '                    ; our input buffer
+WordStart:              ds 5                            ;
+WordLen:                dw $0000                        ;
+
 TOP_ROW                 defb 139,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131;
                         defb 131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131;
                         defb 131,131,131,131,131,131,131,131,131,131,135;
 BOT_ROW                 defb 142,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140;
                         defb 140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140;
                         defb 140,140,140,140,140,140,140,140,140,140,141;
+BLANK_ROW               defs 51,' '                     ;
 
                         include "esp.asm"               ;
                         include "constants.asm"         ;

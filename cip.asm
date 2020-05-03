@@ -96,13 +96,8 @@ PopulateCipSend         ld de, MsgBuffer                ; cipsend buffer
                         WriteString(Cmd.CIPSEND, Cmd.CIPSENDLen);    AT+CIPSEND=
                         WriteBuffer(WordStart, WordLen) ;                n
                         WriteString(Cmd.Terminate, Cmd.TerminateLen);  cr lf
-;                        PrintLine(0,12,(WordStart),2)   ;
-;                        PrintLine(0,13,MsgBuffer,13)    ;
 
 PopulateServerRequest   ld de, Buffer                   ; actual request for server
-;                        WriteString(MBOX_PROTOCOL_BYTES, 2);
-;                        WriteString(MBOX_CMD, 1)        ;
-;                        WriteString(MBOX_APP_ID, 1)     ;
                         WriteBuffer(RequestBufAddr, RequestLen) ;
                         WriteString(Cmd.Terminate, Cmd.TerminateLen); )
 SendRequest:

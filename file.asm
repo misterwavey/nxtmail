@@ -12,7 +12,7 @@ DoCreate                ld a, (esxDOS.DefaultDrive)     ; no - create file
                         jp nc, DoSave                   ; save if create worked
                         PrintLine(0,5,Err.FileCreate, 20) ; otherwise show error
                         ret                             ;
-DoSave                  ld ix, USER_ID_BUF                ; save userid
+DoSave                  ld ix, MBOX_USER_ID                ; save userid
                         ld bc, 20                       ; with trailing 0s
                         call esxDOS.fWrite              ; write to file
                         jp nc, CloseSaved               ; if it worked, close
@@ -77,7 +77,7 @@ CloseFile               call esxDOS.fClose              ;
                         jp Fepd                         ; loop forever
 
 ProcessFileBuf          ld hl, FILEBUF                  ;
-                        ld de, USER_ID_BUF                ;
+                        ld de, MBOX_USER_ID                ;
                         ld bc, 20                       ;
                         ldir                            ;
                         ld hl, CONNECTED                ;   set not connected by default

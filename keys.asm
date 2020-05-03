@@ -34,9 +34,9 @@
 ;
 
 HandleUserIdInput       ld b, 20                        ; collect 20 chars for userId
-                        ld c, $31                       ; used to debounce
+                        ld c, $31                       ; used to debounce ('1' from menu press)
                         ld hl, USER_ID_BUF              ; which buffer to store chars
-InputLoop               PrintLine(3,7,USER_ID_BUF, 20)  ; show current buffer contents
+InputLoop               PrintLine(3,8,USER_ID_BUF, 20)  ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
                         call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
@@ -53,6 +53,7 @@ ShiftCheck              cp $27                          ; $27=CS - check if caps
                         cp $23                          ; $23=0 - is 2nd char 0 key? (CS + 0 = delete)
                         jp z, Delete                    ; yes
                         cp $20                          ; no. is 2nd char SPACE? (CS+SP=break)
+                        scf                             ; set carry so we can tell it was a break
                         ret z                           ; yes back to menu
                         jp nz, InputLoop                ; no. collect another char
 
