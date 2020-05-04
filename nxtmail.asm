@@ -78,8 +78,8 @@ Main                    proc                            ;
                         call SetupScreen                ;
                         call LoadFile                   ; obtain any previously saved userid and register userid with server
                         call DisplayMenu                ;
+                        call DisplayStatus              ;
 MainLoop                call HandleMenuChoice           ;
-                        call ClearCentre                ;
 
                         jp MainLoop                     ;
 pend
@@ -122,7 +122,6 @@ DisplayMenu             call DrawMenuBox                ;
                         PrintLine(1,2,MENU_LINE_2,MENU_LINE_2_LEN) ;
                         PrintLine(1,3,MENU_LINE_3,MENU_LINE_3_LEN) ;
                         PrintLine(1,4,MENU_LINE_4,MENU_LINE_4_LEN) ;
-                        call DisplayStatus              ;
                         ret                             ;
 
 DisplayStatus           PrintLine(0,21,BLANK_ROW,51)    ;
@@ -135,23 +134,22 @@ DisplayStatus           PrintLine(0,21,BLANK_ROW,51)    ;
                         jp z, PrintConnected            ;
                         PrintLine(MboxHostLen+1,18,OFFLINE,OFFLINE_LEN);
                         ret                             ;
-
 PrintConnected          PrintLine(0,22,MSG_NICK,MSG_NICK_LEN) ;
                         PrintLineLenVar(0+MSG_NICK_LEN,22,MBOX_NICK, MBOX_NICK_LEN) ;
                         PrintLine(0,23,MESSAGES,MESSAGES_LEN);
-                        PrintLine(50-VERSION_LEN,23,VERSION,VERSION_LEN);
-                        ld hl,(MSG_COUNT)               ;
+                        PrintLine(49-VERSION_LEN,23,VERSION,VERSION_LEN);
+                        ld hl,MSG_COUNT                 ;
                         inc (hl)                        ;
                         dec (hl)                        ; trick for zero check
                         jp z, PrintZeroMessages         ; don't convert message count to ascii if zero (ldir uses len in BC)
                         ld hl, (MSG_COUNT)              ;
-                        call ConvertWordToAsc           ; otherwise do
-                        ld bc, (WordLen)                ;
+                        call ConvertWordToAsc           ; otherwise convert number to ascii: text in WordStart, length in WordLen
+                        ld bc, (WordLen)                ; fill MSG_COUNT_BUF with the ascii number
                         ld de, MSG_COUNT_BUF            ;
                         ld hl, (WordStart)              ;
                         ldir                            ;
                         PrintLineLenVar(0+MESSAGES_LEN,23,MSG_COUNT_BUF,WordLen) ;
-                        ret
+                        ret                             ;
 PrintZeroMessages       PrintLine(0+MESSAGES_LEN,23,MSG_COUNT_ZERO,1);
                         ret                             ;
 
@@ -185,27 +183,28 @@ HandleMenuChoice        ei                              ;
                         call ROM_KEY_SCAN               ;
                         di                              ;
                         inc d                           ; no shiftkey = ff
-                        jp nz,HandleMenuChoice          ; ignore shifted key combos
+                        ret nz                          ; ignore shifted key combos
                         ld a,e                          ; a: = key code of key pressed (ff if none).
                         cp $24                          ; check for 1 key
-                        jp z,HandleRegister             ;
+                        jp z, HandleRegister            ;
                         cp $1c                          ; check for 2 key
-                        jp z,HandleSend                 ;
+                        jp z, HandleSend                ;
                         cp $14                          ; check for 3 key
                         jp z, HandleViewMessage         ;
                         cp $0c                          ; check for 4 key
                         jp z, HandleCount               ;
-EndLoop                 jp HandleMenuChoice             ;
+
+                        ret                             ;
 
 HandleRegister          PrintLine(0,7,REG_PROMPT, REG_PROMPT_LEN) ;
                         PrintLine(0,8,PROMPT, PROMPT_LEN) ;
                         call WipeUserId                 ;
                         call HandleUserIdInput          ;
-                        ret c                           ; back to menu - input was cancelled by break
+                        jp c,RegBreak                           ; back to menu - input was cancelled by break
                         call PopulateMboxUserId         ;
                         call RegisterUserId             ;
                         call PressKeyToContinue         ;
-                        call ClearCentre                ;
+RegBreak                call ClearCentre                ;
                         call DisplayStatus              ;
                         ret                             ;
 
@@ -241,7 +240,7 @@ WipeUserId              ld hl, USER_ID_BUF              ;   fill nick with space
                         ld e,l                          ;
                         inc de                          ;
                         ld (hl), ' '                    ;
-                        ld bc, 20                       ;
+                        ld bc, 19                       ;
                         ldir                            ;
                         ret                             ;
 ;
@@ -253,8 +252,8 @@ ProcessRegResponse      ld hl, (ResponseStart)          ;
                         jp z, PrintNickname             ;
                         cp MBOX_STATUS_REGISTER_OK      ; ok? cool
                         jp z, PrintNickname             ;
-PrintBadUser            PrintLine(6,21,MBOX_BLANK_NICK, 20);
-                        PrintLine(6,21,BAD_USER_MSG, BAD_USER_MSG_LEN) ; otherwise
+                        ld a, 0                         ;
+BadUser                 ld (CONNECTED), a               ;
                         ret                             ;
 PrintNickname           ld a, 1                         ;
                         ld (CONNECTED), a               ;
@@ -274,7 +273,7 @@ CalcUserNickLength      ld a, $00                       ;
                         ld hl, MBOX_NICK                ;
                         ld bc, 20                       ; nick max len
                         cpir                            ; find first $00 or bc == 0
-                        jp nz, LenIsMax                 ; yes: set size to 20
+                        jp nz, LenIsMax                 ; z only set if match found
                         inc c                           ;
                         ld a, 20                        ; no: calc len of 20 - bc
                         sub c                           ; if bc max is 20, b is 0
@@ -297,8 +296,7 @@ LenIsMax                ld a, 20                        ;
 ; pos:   | 0      |
 ; size:  | 1      |
 ; field: | status |
-HandleSend              call ClearCentre                ;
-                        call WipeTargetNick             ;
+HandleSend              call WipeTargetNick             ;
                         call HandleGetTargetNick        ;
                         ret c                           ; if we exited via BREAK
                         call TerminateTargetNick        ;
@@ -320,6 +318,10 @@ HandleSend              call ClearCentre                ;
                         ld de, REQUESTBUF               ;
                         call MakeCIPSend                ;
                         call ProcessSendResponse        ;
+                        call PressKeyToContinue         ;
+                        call ClearCentre                ;
+                        call DisplayStatus              ;
+
                         ret                             ;
 ;
 ; zero pad the remainder of the msg
@@ -543,11 +545,8 @@ ProcessSendResponse     ld hl, (ResponseStart)          ;
                         cp MBOX_STATUS_OK               ;
                         jp nz, PrintProblemSend         ;
                         PrintLine(15, 15, OK, OK_LEN)   ;
-                        call PressKeyToContinue         ;
                         ret                             ;
 PrintProblemSend        PrintLine(15,15, MSG_ERR_SENDING,MSG_ERR_SENDING_LEN);
-                        call PressKeyToContinue         ;
-                        call ClearCentre                ;
                         ret                             ;
 
 ;
@@ -591,7 +590,6 @@ ProcessNickResponse     ld hl, (ResponseStart)          ;
                         jp z, UnregisteredNick          ;
                         ret                             ; Z unset
 UnregisteredNick        PrintLine(0,16,MSG_UNREG_NICK, MSG_UNREG_NICK_LEN);
-                        call PressKeyToContinue         ;
                         ld a, 0                         ;
                         or a                            ; Z set
                         ret                             ;
@@ -615,8 +613,6 @@ HandleViewMessage       call WipeMsgId                  ;  fill entire string wi
 
                         DecodeDecimal(MSG_ID_BUF, MSG_ID_BUF_LEN) ; populate hl with the numerical value of the input id
                         ld (MBOX_MSG_ID), hl            ;
-                        call PressKeyToContinue         ;
-
                         ld a, MBOX_CMD_GET_MESSAGE      ;
                         call BuildGetMsgRequest         ;
                         ld h, 0                         ;
@@ -624,6 +620,10 @@ HandleViewMessage       call WipeMsgId                  ;  fill entire string wi
                         ld de, REQUESTBUF               ;
                         call MakeCIPSend                ;
                         call ProcessGetResponse         ;
+                        call PressKeyToContinue         ;
+                        call ClearCentre                ;
+                        call DisplayStatus              ;
+
                         ret                             ;
 
 CountMsgIdLen           ld hl, MSG_ID_BUF               ;
@@ -760,11 +760,9 @@ ProcessGetResponse      ld hl, (ResponseStart)          ;  status byte
                         ld bc, (IN_MSG_LEN)             ;
                         ldir                            ;
                         PrintLineLenVar(0,10,IN_MESSAGE,IN_MSG_LEN);
-                        call PressKeyToContinue         ;
                         ret                             ;
 
 PrintBadMsgId           PrintLine(0,15,BAD_MSG_ID,BAD_MSG_ID_LEN) ;
-                        call PressKeyToContinue         ;
                         ret                             ;
 
 ;
@@ -787,6 +785,8 @@ HandleCount             ld a, MBOX_CMD_MESSAGE_COUNT    ;
                         ld l, 2+1+1+20                  ; proto+cmd+app+userid
                         call MakeCIPSend                ;
                         call ProcessMsgCountResponse    ;
+                        call DisplayStatus              ;
+
                         ret                             ;
 
 ProcessMsgCountResponse ld hl, (ResponseStart)          ;
@@ -873,7 +873,7 @@ MESSAGES_LEN            equ $-MESSAGES                  ;
 MsgBuffer:              ds 256                          ;
 MsgBufferLen            equ $-MsgBuffer                 ;
 MSG_COUNT               defb $0,$0                      ;
-MSG_COUNT_BUF           defs 6                          ;
+MSG_COUNT_BUF           defs 5                          ;
 MSG_COUNT_ZERO          defb '0'                        ;
 MSG_ERR_SENDING         defb "Error sending message"    ;
 MSG_ERR_SENDING_LEN     equ $-MSG_ERR_SENDING           ;
