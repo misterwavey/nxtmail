@@ -1,4 +1,4 @@
-iimport socket              
+import socket              
 import threading
 import pymysql
 from pymysql.err import IntegrityError
