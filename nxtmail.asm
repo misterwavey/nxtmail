@@ -200,12 +200,12 @@ HandleRegister          PrintLine(0,7,REG_PROMPT, REG_PROMPT_LEN) ;
                         PrintLine(0,8,PROMPT, PROMPT_LEN) ;
                         call WipeUserId                 ;
                         call HandleUserIdInput          ;
-                        jp c,RegBreak                           ; back to menu - input was cancelled by break
+                        jp c,RegBreak                   ; back to menu - input was cancelled by break
                         call PopulateMboxUserId         ;
                         call RegisterUserId             ;
                         call PressKeyToContinue         ;
 RegBreak                call ClearCentre                ;
-                        call DisplayStatus              ;
+                        call HandleCount                ; also displays status
                         ret                             ;
 
 PopulateMboxUserId      ld hl, USER_ID_BUF              ; source
