@@ -242,13 +242,14 @@ def handle_get_message(appId, userId, messageId, addr, db):
           bLen = bytearray(1)
           bLen[0]=messageLen
           authorUserId = results[0][1]
-          authorNick = lookupNickForUserId(authorNick)
+          authorNick = lookup_nick_for_userid(authorUserId,db,addr)
+          zAuthorNick = zeroPad(authorNick,20)
           if authorNick == None:
               print ("<{threadName}-{addr}> failed to lookup nick for user {userId}".format(**locals()))
               response = build_response(STATUS_INTERNAL_ERROR)
               return response
-          print ("<{threadName}-{addr}> returning message of len {messageLen} with messageid {messageId} from author {authorId} for user {userId}".format(**locals()))
-          response = bytes(bytearray(bStatus + authorNick + bLen + bMessage))
+          print ("<{threadName}-{addr}> returning message of len {messageLen} with messageid {messageId} from author {authorNick} for user {userId}".format(**locals()))
+          response = bytes(bytearray(bStatus + zAuthorNick + bLen + bMessage))
           return response
       else:
           print ("<{threadName}-{addr}> invalid messageid {messageId} for user {userId}".format(**locals()))
@@ -259,7 +260,8 @@ def handle_get_message(appId, userId, messageId, addr, db):
     response = build_response(STATUS_INTERNAL_ERROR)
     return response
 
-def lookup_nick_for_userid(userid,db):
+def lookup_nick_for_userid(userId,db,addr):
+  threadName = threading.currentThread().name    
   cursor = db.cursor()  
   try:
     sql = "select nickname from user where userId = %s"
