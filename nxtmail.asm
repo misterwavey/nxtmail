@@ -179,9 +179,7 @@ DrawMenuBox             PrintLine(0,0,TOP_ROW,51)       ;
 
 ; HandleMenuChoice
 ;
-HandleMenuChoice        ei                              ;
-                        call ROM_KEY_SCAN               ;
-                        di                              ;
+HandleMenuChoice        call ROM_KEY_SCAN               ;
                         inc d                           ; no shiftkey = ff
                         ret nz                          ; ignore shifted key combos
                         ld a,e                          ; a: = key code of key pressed (ff if none).
@@ -268,28 +266,6 @@ PrintNickname           ld a, 1                         ;
                         call SaveFile                   ;
                         ret                             ;
 
-;
-; calc the len of the user's nick (20 bytes)
-; nicks are 1+ characters with trailing 0s
-;
-; ENTRY: HL address of nick
-;        DE address of nick_len
-; EXIT: (DE) contains nick len
-;
-CalcNickLength          ld a, $00                       ;
-                        ld bc, 20                       ; nick max len
-                        cpir                            ; find first $00 or bc == 0
-                        jp nz, LenIsMax                 ; z only set if match found
-                        inc c                           ; back up the counter
-                        ld a, 20                        ; no: calc len of 20 - bc
-                        sub c                           ; if bc max is 20, b is 0
-                        ld (de), a                      ;
-                        ret                             ;
-
-LenIsMax                ld a, 20                        ;
-                        ld (de), a                      ;
-                        ret                             ;
-
 
 ;
 ; handle send message
@@ -326,6 +302,7 @@ HandleSend              call WipeTargetNick             ;
                         call ProcessSendResponse        ;
                         call PressKeyToContinue         ;
 SendExit                call ClearCentre                ;
+                        call HandleCount
                         call DisplayStatus              ;
 
                         ret                             ;
@@ -389,15 +366,14 @@ BuildSendMsgRequest     ld (MBOX_CMD), a                ;
                         ret                             ;
 
 HandleGetTargetNick     ld b, 20                        ; collect 20 chars for userId
-                        ld c, $1c                       ; used to debounce (1c is '2' from menu)
+                        ld c, $32                       ; used to debounce ($32 is '2' from menu)
                         ld hl, TARGET_NICK_BUF          ; which buffer to store chars
                         PrintLine(0,7,NICK_PROMPT, NICK_PROMPT_LEN) ;
+
 GetNickInputLoop        PrintLine(3,8,TARGET_NICK_BUF, 20) ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
-                        ei                              ;
                         call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
-                        di                              ;
                         pop bc                          ;
                         pop hl                          ;
                         ld a,d                          ; do we have a key modifier? (ss CS etc)
@@ -417,14 +393,14 @@ GetNickShiftCheck       cp $27                          ; $27=CS - check if caps
 
 GetNickDelete           push af                         ; yes
                         ld a,b                          ; let's see if we've got any chars to delete
-                        cp 0                            ;
+                        cp 20                            ;
                         jp z, GetNickInputLoop          ; no. collect another char
                         pop af                          ; yes
                         cp c                            ; is this key same as last keypress?
                         jp z, GetNickInputLoop          ; yes. = debounce
                         ld c, a                         ; no. store key for next debounce check
-                        ld (hl), ' '                    ; blank current char
                         dec hl                          ; and reposition buffer pointer
+                        ld (hl), ' '                    ; blank current char
                         inc b                           ; and collected char count
                         jp GetNickInputLoop             ; collect another char
 
@@ -471,9 +447,7 @@ HandleGetOutMsg         ld b, 200                       ; collect 20 chars for u
 GetMsgInputLoop         PrintLine(3,8,OUT_MESSAGE, 200) ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
-                        ei                              ;
                         call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
-                        di                              ;
                         pop bc                          ;
                         pop hl                          ;
                         ld a,d                          ; do we have a key modifier? (ss CS etc)
@@ -493,14 +467,14 @@ GetMsgShiftCheck        cp $27                          ; $27=CS - check if caps
 
 GetMsgDelete            push af                         ; yes
                         ld a,b                          ; let's see if we've got any chars to delete
-                        cp 0                            ;
+                        cp 200                            ;
                         jp z, GetMsgInputLoop           ; no. collect another char
                         pop af                          ; yes
                         cp c                            ; is this key same as last keypress?
                         jp z, GetMsgInputLoop           ; yes. = debounce
                         ld c, a                         ; no. store key for next debounce check
-                        ld (hl), ' '                    ; blank current char
                         dec hl                          ; and reposition buffer pointer
+                        ld (hl), ' '                    ; blank current char
                         inc b                           ; and collected char count
                         jp GetMsgInputLoop              ; collect another char
 
@@ -679,7 +653,7 @@ BuildGetMsgRequest      ld (MBOX_CMD), a                ;
                         WriteString(MBOX_MSG_ID,2)      ; param 1 is msg id
                         ret                             ;
 
-HandleGetMsgId          ld b, 5                         ; collect 1-5 chars for msg id (0-65535)
+HandleGetMsgId          ld b, 5                         ; collect 1-5 chars for msg id (1-65535)
                         ld c, $14                       ; used to debounce (initially '3' from menu choice)
                         ld hl, MSG_ID_BUF               ; which buffer to store chars
                         PrintLine(0,7,MSG_ID_PROMPT, MSG_ID_PROMPT_LEN) ;
@@ -687,9 +661,7 @@ HandleGetMsgId          ld b, 5                         ; collect 1-5 chars for 
 GetMsgIdInputLoop       PrintLine(3,8,MSG_ID_BUF, 5)    ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
-                        ei                              ;
                         call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
-                        di                              ;
                         pop bc                          ;
                         pop hl                          ;
                         ld a,d                          ; do we have a key modifier? (ss CS etc)
@@ -709,14 +681,14 @@ GetMsgIdShiftCheck      cp $27                          ; $27=CS - check if caps
 
 GetMsgIdDelete          push af                         ; yes
                         ld a,b                          ; let's see if we've got any chars to delete
-                        cp 0                            ;
+                        cp 5                            ;
                         jp z, GetMsgIdInputLoop         ; no. collect another char
                         pop af                          ; yes
                         cp c                            ; is this key same as last keypress?
                         jp z, GetMsgIdInputLoop         ; yes. = debounce
                         ld c, a                         ; no. store key for next debounce check
-                        ld (hl), ' '                    ; blank current char
                         dec hl                          ; and reposition buffer pointer
+                        ld (hl), ' '                    ; blank current char
                         inc b                           ; and collected char count
                         jp GetMsgIdInputLoop            ; collect another char
 
@@ -821,7 +793,29 @@ ProcessMsgCountResponse ld hl, (ResponseStart)          ;
 PrintProblem            PrintLine(6,21,BAD_USER_MSG, BAD_USER_MSG_LEN) ;
                         ret                             ;
 
+;                                                              ;
+; calc the len of the user's nick (20 bytes)
+; nicks are 1+ characters with trailing $00s
 ;
+; ENTRY: HL address of nick
+;        DE address of nick_len (2 bytes)
+; EXIT: (DE) contains nick len
+;
+CalcNickLength          ld a, $00                       ;
+                        ld bc, 20                       ; nick max len
+                        cpir                            ; find first $00 or bc == 0
+                        jp nz, LenIsMax                 ; z only set if match found
+                        inc c                           ; back up the counter
+                        ld a, 20                        ; no: calc len of 20 - bc
+                        sub c                           ; if bc max is 20, b is 0
+                        ld (de), a                      ;
+                        ret                             ;
+
+LenIsMax                ld a, 20                        ;
+                        ld (de), a                      ;
+                        ret                             ;
+
+
 ; BuildStandardRequest
 ;
 ; ENTRY
@@ -838,9 +832,7 @@ BuildStandardRequest    ld (MBOX_CMD), a                ;
                         ret                             ;
 
 PressKeyToContinue      PrintLine(10,17, MSG_PRESS_KEY, MSG_PRESS_KEY_LEN);
-KeyLoop                 ei                              ;
-                        call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
-                        di                              ;
+KeyLoop                 call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
                         ld a,d                          ; do we have a key modifier? (ss CS etc)
                         cp $ff                          ; ff=no
                         ret nz                          ; yes, return

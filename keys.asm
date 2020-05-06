@@ -59,14 +59,14 @@ ShiftCheck              cp $27                          ; $27=CS - check if caps
 
 Delete                  push af                         ; yes
                         ld a,b                          ; let's see if we've got any chars to delete
-                        cp 0                            ;
+                        cp 20                            ;
                         jp z, InputLoop                 ; no. collect another char
                         pop af                          ; yes
                         cp c                            ; is this key same as last keypress?
                         jp z, InputLoop                 ; yes. = debounce
                         ld c, a                         ; no. store key for next debounce check
-                        ld (hl), ' '                    ; blank current char
                         dec hl                          ; and reposition buffer pointer
+                        ld (hl), ' '                    ; blank current char
                         inc b                           ; and collected char count
                         jp InputLoop                    ; collect another char
 
