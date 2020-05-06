@@ -262,26 +262,32 @@ PrintNickname           ld a, 1                         ;
                         inc hl                          ; move past status
                         ld bc, 20                       ; nicks/userids are 20
                         ldir                            ;
-                        call CalcUserNickLength         ;
+                        ld hl, MBOX_NICK                ;
+                        ld de, MBOX_NICK_LEN            ;
+                        call CalcNickLength             ;
                         call SaveFile                   ;
                         ret                             ;
 
 ;
-; calc the len of the user's nick
+; calc the len of the user's nick (20 bytes)
+; nicks are 1+ characters with trailing 0s
 ;
-CalcUserNickLength      ld a, $00                       ;
-                        ld hl, MBOX_NICK                ;
+; ENTRY: HL address of nick
+;        DE address of nick_len
+; EXIT: (DE) contains nick len
+;
+CalcNickLength          ld a, $00                       ;
                         ld bc, 20                       ; nick max len
                         cpir                            ; find first $00 or bc == 0
                         jp nz, LenIsMax                 ; z only set if match found
-                        inc c                           ;
+                        inc c                           ; back up the counter
                         ld a, 20                        ; no: calc len of 20 - bc
                         sub c                           ; if bc max is 20, b is 0
-                        ld (MBOX_NICK_LEN), a           ;
+                        ld (de), a                      ;
                         ret                             ;
 
 LenIsMax                ld a, 20                        ;
-                        ld (MBOX_NICK_LEN), a           ;
+                        ld (de), a                      ;
                         ret                             ;
 
 
@@ -298,7 +304,7 @@ LenIsMax                ld a, 20                        ;
 ; field: | status |
 HandleSend              call WipeTargetNick             ;
                         call HandleGetTargetNick        ;
-                        ret c                           ; if we exited via BREAK
+                        jp c, SendExit                  ; if we exited via BREAK
                         call TerminateTargetNick        ;
                         ld hl,TARGET_NICK_BUF           ; check we've got at least 1 char in the nickname
                         ld a,(hl)                       ;
@@ -319,7 +325,7 @@ HandleSend              call WipeTargetNick             ;
                         call MakeCIPSend                ;
                         call ProcessSendResponse        ;
                         call PressKeyToContinue         ;
-                        call ClearCentre                ;
+SendExit                call ClearCentre                ;
                         call DisplayStatus              ;
 
                         ret                             ;
@@ -752,14 +758,24 @@ ProcessGetResponse      ld hl, (ResponseStart)          ;  status byte
                         ld a, (hl)                      ;
                         cp MBOX_STATUS_GET_MSG_OK       ; is it ok?
                         jp nz, PrintBadMsgId            ; no - show error
-                        inc hl                          ; yes - move past status byte
-                        ld a, (hl)                      ; this is len
+                        inc hl                          ; yes - move past status byte into sender's nick
+                        ld de, IN_NICK                  ; will hold our copy of the msg sender's nick
+                        ld bc, 20                       ;
+                        ldir                            ;
+                        push hl                         ; hl pointing after nick
+                        ld de, IN_NICK_LEN              ;
+                        ld hl, IN_NICK                  ;
+                        call CalcNickLength             ;
+                        pop hl                          ; pointing at msg len
+                        ld a, (hl)                      ; this is msg len
                         ld (IN_MSG_LEN), a              ;
                         ld de, IN_MESSAGE               ; populate in_messge with contents of response
                         inc hl                          ; move past len byte into start of msg
                         ld bc, (IN_MSG_LEN)             ;
                         ldir                            ;
-                        PrintLineLenVar(0,10,IN_MESSAGE,IN_MSG_LEN);
+                        PrintLine(0,10,MSG_FROM,MSG_FROM_LEN);
+                        PrintLineLenVar(0+MSG_FROM_LEN,10,IN_NICK,IN_NICK_LEN);
+                        PrintLineLenVar(0,11,IN_MESSAGE,IN_MSG_LEN);
                         ret                             ;
 
 PrintBadMsgId           PrintLine(0,15,BAD_MSG_ID,BAD_MSG_ID_LEN) ;
@@ -848,6 +864,8 @@ FILEBUF                 defs 128                        ;
 FILE_NAME               defb "/nxtMail2/nxtMail.dat",0  ;
 IN_MSG_LEN              defb 0,0                        ; 2 because we'll point BC at it for ldir
 IN_MESSAGE              defs 200                        ;
+IN_NICK                 defs 20                         ;
+IN_NICK_LEN             defb 0,0                        ;
 MboxHost                defb "nextmailbox.spectrum.cl"  ;
 MboxHostLen             equ $-MboxHost                  ;
 MboxPort:               defb "8361"                     ;
@@ -879,6 +897,8 @@ MSG_ERR_SENDING         defb "Error sending message"    ;
 MSG_ERR_SENDING_LEN     equ $-MSG_ERR_SENDING           ;
 MSG_GET_MSG_PROMPT      defb "Message body: (200 max. Enter to end)";
 MSG_GET_MSG_PROMPT_LEN  equ $-MSG_GET_MSG_PROMPT        ;
+MSG_FROM                defb "From: "                   ;
+MSG_FROM_LEN            equ $-MSG_FROM                  ;
 MSG_ID_BUF              defs 5,' '                      ; '0'-'65535'
 MSG_ID_BUF_LEN          defb 0                          ; length of the digits entered 1-5
 MSG_ID_PROMPT           defb "Message number (1-65535. Enter to end)" ;
