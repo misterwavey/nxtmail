@@ -389,7 +389,7 @@ BuildSendMsgRequest     ld (MBOX_CMD), a                ;
                         ret                             ;
 
 HandleGetTargetNick     ld b, 20                        ; collect 20 chars for userId
-                        ld c, $24                       ; used to debounce
+                        ld c, $1c                       ; used to debounce (1c is '2' from menu)
                         ld hl, TARGET_NICK_BUF          ; which buffer to store chars
                         PrintLine(0,7,NICK_PROMPT, NICK_PROMPT_LEN) ;
 GetNickInputLoop        PrintLine(3,8,TARGET_NICK_BUF, 20) ; show current buffer contents
@@ -600,6 +600,7 @@ UnregisteredNick        PrintLine(0,16,MSG_UNREG_NICK, MSG_UNREG_NICK_LEN);
                         or a                            ; Z set
                         ret                             ;
 
+;
 ; handle view message
 ;
 
@@ -607,11 +608,11 @@ UnregisteredNick        PrintLine(0,16,MSG_UNREG_NICK, MSG_UNREG_NICK_LEN);
 ;
 ; response:
 ;
-; pos:      | 0      | 1          | 2          |
-; size:     | 1      | 1          | n          |
-; field:    | status | messagelen | message    |
-; condition |        | status=203 | status=203 |
-
+; pos:      | 0      | 1          | 21         | 23         |
+; size:     | 1      | 20         | 2          | n          |
+; field:    | status | senderNick | messagelen | message    |
+; condition |        |              status=203              |
+;
 HandleViewMessage       call WipeMsgId                  ;  fill entire string with ' ' ready for display
                         call HandleGetMsgId             ;  input 1-5 digits
                         call TerminateMsgId             ;  place 0 at end of input if < 5
@@ -682,6 +683,7 @@ HandleGetMsgId          ld b, 5                         ; collect 1-5 chars for 
                         ld c, $14                       ; used to debounce (initially '3' from menu choice)
                         ld hl, MSG_ID_BUF               ; which buffer to store chars
                         PrintLine(0,7,MSG_ID_PROMPT, MSG_ID_PROMPT_LEN) ;
+                        PrintLine(1,8,PROMPT,PROMPT_LEN)
 GetMsgIdInputLoop       PrintLine(3,8,MSG_ID_BUF, 5)    ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
@@ -775,7 +777,7 @@ ProcessGetResponse      ld hl, (ResponseStart)          ;  status byte
                         ldir                            ;
                         PrintLine(0,10,MSG_FROM,MSG_FROM_LEN);
                         PrintLineLenVar(0+MSG_FROM_LEN,10,IN_NICK,IN_NICK_LEN);
-                        PrintLineLenVar(0,11,IN_MESSAGE,IN_MSG_LEN);
+                        PrintLineLenVar(0,12,IN_MESSAGE,IN_MSG_LEN);
                         ret                             ;
 
 PrintBadMsgId           PrintLine(0,15,BAD_MSG_ID,BAD_MSG_ID_LEN) ;
