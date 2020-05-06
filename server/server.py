@@ -225,7 +225,7 @@ def handle_get_message(appId, userId, messageId, addr, db):
       print ("<{threadName}-{addr}> userId has {messageCount} messages for appId {appId} in db".format(**locals()))
       if messageId <= messageCount:
         actualMessageId = messageIds[messageId-1]
-        sql = "select message from message where messageId = %s"
+        sql = "select message,authorUserId from message where messageId = %s"
         cursor.execute(sql, (actualMessageId))
         results = cursor.fetchall()
         if results == None:
@@ -241,18 +241,40 @@ def handle_get_message(appId, userId, messageId, addr, db):
           bStatus[0] = STATUS_GET_MESSAGE_OK
           bLen = bytearray(1)
           bLen[0]=messageLen
-          print ("<{threadName}-{addr}> returning message of len {messageLen} with messageid {messageId} for user {userId}".format(**locals()))
-          response = bytes(bytearray(bStatus + bLen + bMessage))
+          authorUserId = results[0][1]
+          authorNick = lookupNickForUserId(authorNick)
+          if authorNick == None:
+              print ("<{threadName}-{addr}> failed to lookup nick for user {userId}".format(**locals()))
+              response = build_response(STATUS_INTERNAL_ERROR)
+              return response
+          print ("<{threadName}-{addr}> returning message of len {messageLen} with messageid {messageId} from author {authorId} for user {userId}".format(**locals()))
+          response = bytes(bytearray(bStatus + authorNick + bLen + bMessage))
           return response
       else:
           print ("<{threadName}-{addr}> invalid messageid {messageId} for user {userId}".format(**locals()))
           response = build_response(STATUS_INVALID_MESSAGE_ID)
           return response
   except IntegrityError as e:
-    print ("<{threadName}-{addr}> Caught a IntegrityError:"+str(e))
+    print ("<{threadName}-{addr}> Caught an IntegrityError:"+str(e))
     response = build_response(STATUS_INTERNAL_ERROR)
     return response
 
+def lookup_nick_for_userid(userid,db):
+  cursor = db.cursor()  
+  try:
+    sql = "select nickname from user where userId = %s"
+    cursor.execute(sql, (userId,))
+    results = cursor.fetchone()
+    if results == None:
+      print ("<{threadName}-{addr}> failed to locate nick of userId {userId} in db".format(**locals()))
+      return None
+    else:
+      nick = results[0] 
+      print ("<{threadName}-{addr}> userId {userId} has nick {nick} in db".format(**locals()))
+      return nick
+  except IntegrityError as e:
+    print ("<{threadName}-{addr}> Caught an IntegrityError:"+str(e))
+    return None
 
 def handle_get_message_count(appId, userId, addr, db):
   threadName = threading.currentThread().name    
@@ -272,7 +294,7 @@ def handle_get_message_count(appId, userId, addr, db):
       response = bytes([STATUS_COUNT_OK] + list(messageCount.to_bytes(2, byteorder="little"))) # todo OverflowError raised if num > 2 bytes
       return response
   except IntegrityError as e:
-    print ("<{threadName}-{addr}> Caught a IntegrityError:"+str(e))
+    print ("<{threadName}-{addr}> Caught an IntegrityError:"+str(e))
     response = build_response(STATUS_INTERNAL_ERROR)
     return response
 
@@ -308,7 +330,7 @@ def do_check_registered_nickname_for_app(appId, userId, nickname, addr, db):
       print ("<{threadName}-{addr}> nickname {nickname} is registered for appId {appId} in db".format(**locals()))
       return STATUS_OK
   except IntegrityError as e:
-      print ("<{threadName}-{addr}> Caught a IntegrityError:"+str(e))
+      print ("<{threadName}-{addr}> Caught an IntegrityError:"+str(e))
       return STATUS_INTERNAL_ERROR
 
 
