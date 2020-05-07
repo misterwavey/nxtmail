@@ -72,7 +72,7 @@ org                     $8000                           ; This should keep our c
 ;
 Main                    proc                            ;
                         di                              ;
-                        nextreg NXREG_TURBO_CTL, CPU_28 ; Next Turbo Control Register $07: 11b is 28MHz
+                        nextreg NXREG_TURBO_CTL, CPU_28 ; Next Turbo Control Register to set cpu speed
                         call MakeCIPStart               ; setup comms to server
 
                         call SetupScreen                ;
@@ -105,6 +105,9 @@ SetFontWidth            PrintChar(30)                   ; set char width in pixe
                         PrintChar(5)                    ; to 5 (51 chars wide)
                         ret                             ;
 
+;
+; clear centre panel of any text
+;
 ClearCentre             PrintAt(0,7)                    ;
                         ld bc, 51*13                    ; 52 cols * 13 rows.
 ClearLoop               PrintChar(' ')                  ;
@@ -123,7 +126,9 @@ DisplayMenu             call DrawMenuBox                ;
                         PrintLine(1,3,MENU_LINE_3,MENU_LINE_3_LEN) ;
                         PrintLine(1,4,MENU_LINE_4,MENU_LINE_4_LEN) ;
                         ret                             ;
-
+;
+; show connected, nick, message counts
+;
 DisplayStatus           PrintLine(0,21,BLANK_ROW,51)    ;
                         PrintLine(0,22,BLANK_ROW,51)    ;
                         PrintLine(0,23,BLANK_ROW,51)    ;
@@ -133,7 +138,7 @@ DisplayStatus           PrintLine(0,21,BLANK_ROW,51)    ;
                         cp 1                            ;
                         jp z, PrintConnected            ;
                         PrintLine(MboxHostLen+1,18,OFFLINE,OFFLINE_LEN);
-                        ret                             ;
+                        ret                             ;   bail because we're offline
 PrintConnected          PrintLine(0,22,MSG_NICK,MSG_NICK_LEN) ;
                         PrintLineLenVar(0+MSG_NICK_LEN,22,MBOX_NICK, MBOX_NICK_LEN) ;
                         PrintLine(0,23,MESSAGES,MESSAGES_LEN);
@@ -153,6 +158,9 @@ PrintConnected          PrintLine(0,22,MSG_NICK,MSG_NICK_LEN) ;
 PrintZeroMessages       PrintLine(0+MESSAGES_LEN,23,MSG_COUNT_ZERO,1);
                         ret                             ;
 
+;
+; surround menu with a box
+;
 DrawMenuBox             PrintLine(0,0,TOP_ROW,51)       ;
                         PrintAt(0,1)                    ;
                         PrintChar(138)                  ;
@@ -191,9 +199,7 @@ HandleMenuChoice        call ROM_KEY_SCAN               ;
                         jp z, HandleViewMessage         ;
                         cp $0c                          ; check for 4 key
                         jp z, HandleCount               ;
-
                         ret                             ;
-
 HandleRegister          PrintLine(0,7,REG_PROMPT, REG_PROMPT_LEN) ;
                         PrintLine(0,8,PROMPT, PROMPT_LEN) ;
                         call WipeUserId                 ;
@@ -205,7 +211,9 @@ HandleRegister          PrintLine(0,7,REG_PROMPT, REG_PROMPT_LEN) ;
 RegBreak                call ClearCentre                ;
                         call HandleCount                ; also displays status
                         ret                             ;
-
+;
+; copy buffer into fixed location
+;
 PopulateMboxUserId      ld hl, USER_ID_BUF              ; source
                         ld de, MBOX_USER_ID             ;
                         ld bc, 20                       ;
@@ -232,7 +240,9 @@ RegisterUserId:         ld a, MBOX_CMD_REGISTER         ;
                         call MakeCIPSend                ;
                         call ProcessRegResponse         ;
                         ret                             ;
-
+;
+; set all 20 chars of user id to spaces
+;
 WipeUserId              ld hl, USER_ID_BUF              ;   fill nick with spaces (0s cause problems when printing to screen)
                         ld d,h                          ;
                         ld e,l                          ;
@@ -287,8 +297,7 @@ HandleSend              call WipeTargetNick             ;
                         cp 0                            ;
                         jp z, HandleSend                ; nope
                         call HandleCheckNick            ; is the nick registered?
-                        jp z, HandleSend                ; nope
-
+                        jp z, HandleSend                ; nope. go back around
                         call ClearCentre                ;
                         call WipeOutMsg                 ;
                         call HandleGetOutMsg            ;
@@ -304,7 +313,6 @@ HandleSend              call WipeTargetNick             ;
 SendExit                call ClearCentre                ;
                         call HandleCount                ;
                         call DisplayStatus              ;
-
                         ret                             ;
 ;
 ; zero pad the remainder of the msg
@@ -323,6 +331,9 @@ TerminateOutMsg         ld hl, OUT_MESSAGE              ;  set trailing $0s afte
                         ldir                            ;
 MsgNoSpaces             ret                             ;
 
+;
+; zero pad the entered nick
+;
 TerminateTargetNick     ld hl, TARGET_NICK_BUF          ;  set trailing $0s after text for remainder of nick
                         ld a, ' '                       ;
                         ld bc, 20                       ;
@@ -337,6 +348,9 @@ TerminateTargetNick     ld hl, TARGET_NICK_BUF          ;  set trailing $0s afte
                         ldir                            ;
 NoSpaces                ret                             ;
 
+;
+; set outgoing message to be tab char (printable and detectable as end of entry)
+;
 WipeOutMsg              ld hl, OUT_MESSAGE              ;   fill nick with spaces (0s cause problems when printing to screen)
                         ld d,h                          ;
                         ld e,l                          ;
@@ -345,7 +359,9 @@ WipeOutMsg              ld hl, OUT_MESSAGE              ;   fill nick with space
                         ld bc, 199                      ;
                         ldir                            ;
                         ret                             ;
-
+;
+;
+;
 WipeTargetNick          ld hl, TARGET_NICK_BUF          ;   fill nick with spaces (0s cause problems when printing to screen)
                         ld d,h                          ;
                         ld e,l                          ;
