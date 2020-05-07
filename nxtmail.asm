@@ -856,6 +856,7 @@ CONNECTED_TO_LEN        equ $-CONNECTED_TO              ;
 DIR_NAME                defb "/nxtMail2",0              ;
 FILEBUF                 defs 128                        ;
 FILE_NAME               defb "/nxtMail2/nxtMail.dat",0  ;
+HYPHEN defb '-'
 IN_MSG_LEN              defb 0,0                        ; 2 because we'll point BC at it for ldir
 IN_MESSAGE              defs 200                        ;
 IN_NICK                 defs 20                         ;

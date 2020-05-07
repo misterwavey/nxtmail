@@ -36,7 +36,13 @@
 HandleUserIdInput       ld b, 20                        ; collect 20 chars for userId
                         ld c, $31                       ; used to debounce ('1' from menu press)
                         ld hl, USER_ID_BUF              ; which buffer to store chars
-InputLoop               PrintLine(3,8,USER_ID_BUF, 20)  ; show current buffer contents
+InputLoop               PrintLine(3,8,USER_ID_BUF, 5)   ; show current buffer contents
+                        PrintLine(3+5,8,HYPHEN,1)
+                        PrintLine(3+6,8,USER_ID_BUF+5, 5);
+                        PrintLine(3+6+5,8,HYPHEN,1)
+                        PrintLine(3+6+6,8,USER_ID_BUF+5+5, 5);
+                        PrintLine(3+6+6+5,8,HYPHEN,1)
+                        PrintLine(3+6+6+6,8,USER_ID_BUF+5+5+5, 5);
                         push hl                         ;
                         push bc                         ;
                         call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
