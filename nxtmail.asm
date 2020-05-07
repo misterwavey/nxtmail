@@ -198,7 +198,7 @@ HandleRegister          PrintLine(0,7,REG_PROMPT, REG_PROMPT_LEN) ;
                         PrintLine(0,8,PROMPT, PROMPT_LEN) ;
                         call WipeUserId                 ;
                         call HandleUserIdInput          ;
-                        jp c,RegBreak                   ; back to menu - input was cancelled by break
+                        jp c, RegBreak                  ; back to menu - input was cancelled by break
                         call PopulateMboxUserId         ;
                         call RegisterUserId             ;
                         call PressKeyToContinue         ;
@@ -302,7 +302,7 @@ HandleSend              call WipeTargetNick             ;
                         call ProcessSendResponse        ;
                         call PressKeyToContinue         ;
 SendExit                call ClearCentre                ;
-                        call HandleCount
+                        call HandleCount                ;
                         call DisplayStatus              ;
 
                         ret                             ;
@@ -393,7 +393,7 @@ GetNickShiftCheck       cp $27                          ; $27=CS - check if caps
 
 GetNickDelete           push af                         ; yes
                         ld a,b                          ; let's see if we've got any chars to delete
-                        cp 20                            ;
+                        cp 20                           ;
                         jp z, GetNickInputLoop          ; no. collect another char
                         pop af                          ; yes
                         cp c                            ; is this key same as last keypress?
@@ -467,7 +467,7 @@ GetMsgShiftCheck        cp $27                          ; $27=CS - check if caps
 
 GetMsgDelete            push af                         ; yes
                         ld a,b                          ; let's see if we've got any chars to delete
-                        cp 200                            ;
+                        cp 200                          ;
                         jp z, GetMsgInputLoop           ; no. collect another char
                         pop af                          ; yes
                         cp c                            ; is this key same as last keypress?
@@ -657,7 +657,7 @@ HandleGetMsgId          ld b, 5                         ; collect 1-5 chars for 
                         ld c, $14                       ; used to debounce (initially '3' from menu choice)
                         ld hl, MSG_ID_BUF               ; which buffer to store chars
                         PrintLine(0,7,MSG_ID_PROMPT, MSG_ID_PROMPT_LEN) ;
-                        PrintLine(1,8,PROMPT,PROMPT_LEN)
+                        PrintLine(1,8,PROMPT,PROMPT_LEN);
 GetMsgIdInputLoop       PrintLine(3,8,MSG_ID_BUF, 5)    ; show current buffer contents
                         push hl                         ;
                         push bc                         ;
@@ -911,7 +911,7 @@ OUT_MESSAGE             ds 200,$09                      ; gets printed so fill w
 Prescaler:              ds 3                            ;
 PROMPT                  defb "> "                       ;
 PROMPT_LEN              equ $-PROMPT                    ;
-REG_PROMPT              defb "Enter your Next Mailbox Id";
+REG_PROMPT              defb "Enter your Next Mailbox Id (then enter)";
 REG_PROMPT_LEN          equ $-REG_PROMPT                ;
 REQUESTBUF              ds 256                          ;
 RequestLenAddr:         dw $0000                        ;

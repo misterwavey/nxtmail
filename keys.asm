@@ -59,7 +59,7 @@ ShiftCheck              cp $27                          ; $27=CS - check if caps
 
 Delete                  push af                         ; yes
                         ld a,b                          ; let's see if we've got any chars to delete
-                        cp 20                            ;
+                        cp 20                           ;
                         jp z, InputLoop                 ; no. collect another char
                         pop af                          ; yes
                         cp c                            ; is this key same as last keypress?
@@ -73,6 +73,15 @@ Delete                  push af                         ; yes
 NoShiftPressed          ld a,e                          ; do we have a key pressed?
                         cp $ff                          ;
                         jp z, NoKeyPressed              ; no
+                        cp $21                          ; enter?
+                        jr nz, NotEnter                 ; no
+                        ld a, b                         ; yes. see if we've got enough chars
+                        cp 0                            ; got all our chars?
+                        ret z                           ; we've got all our chars and enter was pressed
+NotEnter                ld a, b                         ; can we allow more chars?
+                        cp 0                            ; got all our chars?
+                        ld a,e                          ;   place key into a again
+                        jp z, NoKeyPressed              ; not allowed any more chars until delete is pressed
                         push bc                         ; we have a keypress without shift
                         push hl                         ;
                         ld b, 0                         ;
@@ -92,10 +101,6 @@ NoShiftPressed          ld a,e                          ; do we have a key press
                         ld (hl),a                       ; no - store char in buffer
                         inc hl                          ;
                         dec b                           ; one less char to collect
-                        ld a,b                          ;
-                        cp 0                            ; collected all chars?
-                        ld a, c                         ;    (restore after the count check)
-                        ret z                           ; yes
                         jp InputLoop                    ; no
 
 NoKeyPressed            cp c                            ; is current keycode same as last?
