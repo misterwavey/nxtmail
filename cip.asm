@@ -114,3 +114,14 @@ ReceiveResponse:
                         call ParseIPDPacket             ;
                         ErrorIfCarry(Err.ESPConn4)      ; Raise connection error if no IPD packet
                         ret                             ;
+
+
+RequestLenAddr:         dw $0000                        ;
+RequestBufAddr:         dw $0000                        ;
+RequestLen              defb 0,0                        ;
+ResponseStart:          dw $0000                        ;
+ResponseLen:            dw $0000                        ;
+Prescaler:              ds 3                            ;
+MsgBuffer:              ds 256                          ;
+MsgBufferLen            equ $-MsgBuffer                 ;
+

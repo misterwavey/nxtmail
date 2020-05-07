@@ -106,7 +106,7 @@ SetFontWidth            PrintChar(30)                   ; set char width in pixe
                         ret                             ;
 
 ClearCentre             PrintAt(0,7)                    ;
-                        ld bc, 51*13                    ; 52 cols * 13 rows. todo: ldir this?
+                        ld bc, 51*13                    ; 52 cols * 13 rows.
 ClearLoop               PrintChar(' ')                  ;
                         dec bc                          ;
                         ld a,c                          ;
@@ -342,7 +342,7 @@ WipeOutMsg              ld hl, OUT_MESSAGE              ;   fill nick with space
                         ld e,l                          ;
                         inc de                          ;
                         ld (hl), $09                    ;
-                        ld bc, 200                      ;
+                        ld bc, 199                      ;
                         ldir                            ;
                         ret                             ;
 
@@ -351,7 +351,7 @@ WipeTargetNick          ld hl, TARGET_NICK_BUF          ;   fill nick with space
                         ld e,l                          ;
                         inc de                          ;
                         ld (hl), ' '                    ;
-                        ld bc, 20                       ;
+                        ld bc, 19                       ;
                         ldir                            ;
                         ret                             ;
 
@@ -431,8 +431,7 @@ GetNickNoShiftPressed   ld a,e                          ; do we have a key press
                         ld a,b                          ;
                         cp 0                            ; collected all chars?
                         ld a, c                         ;    (restore after the count check)
-                        ccf                             ; clear c for return status
-                        ret z                           ; yes
+                        ret z                           ; yes - with carry cleared
                         jp GetNickInputLoop             ; no
 
 GetNickNoKeyPressed     cp c                            ; is current keycode same as last?
@@ -513,12 +512,6 @@ GetMsgNoKeyPressed      cp c                            ; is current keycode sam
                         jp z, GetMsgInputLoop           ; yes - just loop again
                         ld c, a                         ; no, update c to show change
                         jp GetMsgInputLoop              ;
-
-; HandleGetMessageToSend  ld de, OUT_MESSAGE              ;
-;                        ld hl, DUMMY_MESSAGE            ;
-;                        ld bc, 50                       ;
-;                        ldir                            ;
-;                        ret                             ;
 
 ProcessSendResponse     ld hl, (ResponseStart)          ;
                         ld a, (hl)                      ;
@@ -640,7 +633,7 @@ WipeMsgId               ld hl, MSG_ID_BUF               ; fill id with spaces (0
                         ld e,l                          ;
                         inc de                          ;
                         ld (hl), ' '                    ;
-                        ld bc, 5                        ;
+                        ld bc, 4                        ;
                         ldir                            ;
                         ret                             ;
 
@@ -840,9 +833,6 @@ KeyLoop                 call ROM_KEY_SCAN               ; d=modifier e=keycode o
                         cp $ff                          ; ff=no
                         ret nz                          ; yes, return
                         jp KeyLoop                      ; otherwise continue to check for input
-
-MSG_NICK                defb "Nick: "                   ;
-MSG_NICK_LEN            equ $-MSG_NICK                  ;
 BAD_MSG_ID              defb "bad message number"       ;
 BAD_MSG_ID_LEN          equ $-BAD_MSG_ID                ;
 BAD_USER_MSG            defb "<no user registered>"     ;
@@ -856,9 +846,9 @@ CONNECTED_TO_LEN        equ $-CONNECTED_TO              ;
 DIR_NAME                defb "/nxtMail2",0              ;
 FILEBUF                 defs 128                        ;
 FILE_NAME               defb "/nxtMail2/nxtMail.dat",0  ;
-HYPHEN defb '-'
-IN_MSG_LEN              defb 0,0                        ; 2 because we'll point BC at it for ldir
+HYPHEN                  defb '-'                        ;
 IN_MESSAGE              defs 200                        ;
+IN_MSG_LEN              defb 0,0                        ; 2 because we'll point BC at it for ldir
 IN_NICK                 defs 20                         ;
 IN_NICK_LEN             defb 0,0                        ;
 MboxHost                defb "nextmailbox.spectrum.cl"  ;
@@ -883,8 +873,6 @@ MENU_LINE_4             defb "4. Refresh message count" ;
 MENU_LINE_4_LEN         equ $-MENU_LINE_4               ;
 MESSAGES                defb "Messages: "               ;
 MESSAGES_LEN            equ $-MESSAGES                  ;
-MsgBuffer:              ds 256                          ;
-MsgBufferLen            equ $-MsgBuffer                 ;
 MSG_COUNT               defb $0,$0                      ;
 MSG_COUNT_BUF           defs 5                          ;
 MSG_COUNT_ZERO          defb '0'                        ;
@@ -894,13 +882,15 @@ MSG_GET_MSG_PROMPT      defb "Message body: (200 max. Enter to end)";
 MSG_GET_MSG_PROMPT_LEN  equ $-MSG_GET_MSG_PROMPT        ;
 MSG_FROM                defb "From: "                   ;
 MSG_FROM_LEN            equ $-MSG_FROM                  ;
-MSG_ID_BUF              defs 5,' '                      ; '0'-'65535'
+MSG_ID_BUF              defs 5,' '                      ; '1'-'65535'
 MSG_ID_BUF_LEN          defb 0                          ; length of the digits entered 1-5
 MSG_ID_PROMPT           defb "Message number (1-65535. Enter to end)" ;
 MSG_ID_PROMPT_LEN       equ $-MSG_ID_PROMPT             ;
 MSG_PRESS_KEY           defb "Press any key to continue";
 MSG_PRESS_KEY_LEN       equ $-MSG_PRESS_KEY             ;
 MSG_UNREG_NICK          defb "Nick is unregistered with NxtMail";
+MSG_NICK_LEN            equ $-MSG_NICK                  ;
+MSG_NICK                defb "Nick: "                   ;
 MSG_UNREG_NICK_LEN      equ $-MSG_UNREG_NICK            ;
 NICK_PROMPT             defb "To nickname: (20 chars. Enter to end)" ;
 NICK_PROMPT_LEN         equ $-NICK_PROMPT               ;
@@ -908,27 +898,18 @@ OFFLINE                 defb "offline"                  ;
 OFFLINE_LEN             equ $-OFFLINE                   ;
 OK                      defb "OK"                       ;
 OK_LEN                  equ $-OK                        ;
-OUT_MESSAGE             ds 200,$09                      ; gets printed so fill with tab
-Prescaler:              ds 3                            ;
+OUT_MESSAGE             ds 200,$09                      ; gets printed so fill with tab (not 0s and not space because users use space)
 PROMPT                  defb "> "                       ;
 PROMPT_LEN              equ $-PROMPT                    ;
 REG_PROMPT              defb "Enter your Next Mailbox Id (then enter)";
 REG_PROMPT_LEN          equ $-REG_PROMPT                ;
 REQUESTBUF              ds 256                          ;
-RequestLenAddr:         dw $0000                        ;
-RequestBufAddr:         dw $0000                        ;
-RequestLen              defb 0,0                        ;
-ResponseStart:          dw $0000                        ;
-ResponseLen:            dw $0000                        ;
 SENDBUF                 defb 255                        ;
-TARGET_NICK             defs 20, 0                      ;
 TARGET_NICK_BUF         defs 20,' '                     ;
 TARGET_NICK_LEN         defb 0,0                        ; 2 because we'll point BC at it for ldir
 USER_ID_BUF             defs 20, ' '                    ; our input buffer
 VERSION                 defb "nxtMail v0.4 2020 Tadaguff";
 VERSION_LEN             equ $-VERSION                   ;
-WordStart:              ds 5                            ;
-WordLen:                dw $0000                        ;
 
 TOP_ROW                 defb 139,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131;
                         defb 131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131;

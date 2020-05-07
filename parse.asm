@@ -134,4 +134,6 @@ Loop:                   halt
                         ret
 pend
 
+WordStart:              ds 5                            ;
+WordLen:                dw $0000                        ;
 

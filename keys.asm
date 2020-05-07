@@ -37,11 +37,11 @@ HandleUserIdInput       ld b, 20                        ; collect 20 chars for u
                         ld c, $31                       ; used to debounce ('1' from menu press)
                         ld hl, USER_ID_BUF              ; which buffer to store chars
 InputLoop               PrintLine(3,8,USER_ID_BUF, 5)   ; show current buffer contents
-                        PrintLine(3+5,8,HYPHEN,1)
+                        PrintLine(3+5,8,HYPHEN,1)       ;
                         PrintLine(3+6,8,USER_ID_BUF+5, 5);
-                        PrintLine(3+6+5,8,HYPHEN,1)
+                        PrintLine(3+6+5,8,HYPHEN,1)     ;
                         PrintLine(3+6+6,8,USER_ID_BUF+5+5, 5);
-                        PrintLine(3+6+6+5,8,HYPHEN,1)
+                        PrintLine(3+6+6+5,8,HYPHEN,1)   ;
                         PrintLine(3+6+6+6,8,USER_ID_BUF+5+5+5, 5);
                         push hl                         ;
                         push bc                         ;
@@ -94,7 +94,9 @@ NotEnter                ld a, b                         ; can we allow more char
                         ld c, a                         ;  bc = keycode value
                         ld hl, ROM_KEYTABLE             ;  hl = code to ascii lookup table
                         add hl, bc                      ;  find ascii given keycode
-                        ld a, (hl)                      ;
+;                        add bc, $20                     ; find lower case ascii
+;                        add hl, bc                      ;
+                        ld a, (hl)                      ; ascii
                         pop hl                          ;
                         pop bc                          ;
                         cp $20                          ; check if >= 32 (ascii space)
