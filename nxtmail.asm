@@ -403,33 +403,37 @@ GetNickShiftCheck       cp $27                          ; $27=CS - check if caps
                         cp $23                          ; $23=0 - is 2nd char 0 key? (CS + 0 = delete)
                         jp z, GetNickDelete             ; yes
                         cp $20                          ; no. is 2nd char SPACE? (CS+SP=break)
-                        scf                             ; yes: set carry for return status
-                        ret z                           ; back to menu
-                        jp nz, GetNickInputLoop         ; no. collect another char
+                        scf                             ; set carry for return status
+                        ret z                           ; back to menu if yes we pressed break
+                        jp GetNickInputLoop             ; no. collect another char
 
 GetNickDelete           ld a,b                          ; let's see if we've got any chars to delete
                         cp 20                           ;
-                        jp z, GetNickInputLoop          ; no. collect another char
+                        jp z, GetNickInputLoop          ; no. ignore this delete
                         ld a,e                          ; yes. get keypress again
                         cp c                            ; is this key same as last keypress?
                         jp z, GetNickInputLoop          ; yes. = debounce
                         ld c, a                         ; no. store key for next debounce check
                         dec hl                          ; and reposition buffer pointer
                         ld (hl), ' '                    ; blank current char
-                        inc b                           ; and collected char count
+                        inc b                           ; and increase the needed-chars count
                         jp GetNickInputLoop             ; collect another char
 
 GetNickNoShiftPressed   ld a,e                          ; do we have a key pressed?
                         cp $ff                          ;
                         jp z, GetNickNoKeyPressed       ; no
                         cp $21                          ; enter?
-                        ret z                           ;
+                        ret z                           ; yes. we're done here
+                        ld a, b                         ; can we allow more chars?
+                        cp 0                            ; got all our chars?
+                        ld a,e                          ;   place key into a again
+                        jp z, GetNickNoKeyPressed       ; not allowed any more chars until delete is pressed
                         push bc                         ; we have a keypress without shift
                         push hl                         ;
                         ld b, 0                         ;
                         ld c, a                         ;  bc = keycode value
                         ld hl, ROM_KEYTABLE             ;  hl = code to ascii lookup table
-                        add hl, bc                      ;  find ascii given keycode
+                        add hl, bc                      ;  find ascii, given keycode
                         ld a, (hl)                      ;
                         pop hl                          ;
                         pop bc                          ;
@@ -439,14 +443,10 @@ GetNickNoShiftPressed   ld a,e                          ; do we have a key press
                         jp nc,GetNickInputLoop          ; no, ignore
                         cp c                            ; does key = last keypress?
                         jp z, GetNickInputLoop          ; yes - debounce
-                        ld c, a                         ; no - store char in c for next check
+                        ld c, a                         ; no - store char in c for next debounce check
                         ld (hl),a                       ; no - store char in buffer
                         inc hl                          ;
                         dec b                           ; one less char to collect
-                        ld a,b                          ;
-                        cp 0                            ; collected all chars?
-                        ld a, c                         ;    (restore after the count check)
-                        ret z                           ; yes - with carry cleared
                         jp GetNickInputLoop             ; no
 
 GetNickNoKeyPressed     cp c                            ; is current keycode same as last?
