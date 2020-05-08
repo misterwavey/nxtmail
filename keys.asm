@@ -63,11 +63,10 @@ ShiftCheck              cp $27                          ; $27=CS - check if caps
                         ret z                           ; yes back to menu
                         jp nz, InputLoop                ; no. collect another char
 
-Delete                  push af                         ; yes
-                        ld a,b                          ; let's see if we've got any chars to delete
+Delete                  ld a,b                          ; let's see if we've got any chars to delete
                         cp 20                           ;
                         jp z, InputLoop                 ; no. collect another char
-                        pop af                          ; yes
+                        ld a,e                          ; yes. obtain keypress again
                         cp c                            ; is this key same as last keypress?
                         jp z, InputLoop                 ; yes. = debounce
                         ld c, a                         ; no. store key for next debounce check

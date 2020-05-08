@@ -360,7 +360,7 @@ WipeOutMsg              ld hl, OUT_MESSAGE              ;   fill nick with space
                         ldir                            ;
                         ret                             ;
 ;
-;
+; set nick to all spaces so it can be displayed
 ;
 WipeTargetNick          ld hl, TARGET_NICK_BUF          ;   fill nick with spaces (0s cause problems when printing to screen)
                         ld d,h                          ;
@@ -407,11 +407,10 @@ GetNickShiftCheck       cp $27                          ; $27=CS - check if caps
                         ret z                           ; back to menu
                         jp nz, GetNickInputLoop         ; no. collect another char
 
-GetNickDelete           push af                         ; yes
-                        ld a,b                          ; let's see if we've got any chars to delete
+GetNickDelete           ld a,b                          ; let's see if we've got any chars to delete
                         cp 20                           ;
                         jp z, GetNickInputLoop          ; no. collect another char
-                        pop af                          ; yes
+                        ld a,e                          ; yes. get keypress again
                         cp c                            ; is this key same as last keypress?
                         jp z, GetNickInputLoop          ; yes. = debounce
                         ld c, a                         ; no. store key for next debounce check
@@ -480,11 +479,10 @@ GetMsgShiftCheck        cp $27                          ; $27=CS - check if caps
                         ret z                           ; back to menu
                         jp nz, GetMsgInputLoop          ; no. collect another char
 
-GetMsgDelete            push af                         ; yes
-                        ld a,b                          ; let's see if we've got any chars to delete
+GetMsgDelete            ld a,b                          ; let's see if we've got any chars to delete
                         cp 200                          ;
                         jp z, GetMsgInputLoop           ; no. collect another char
-                        pop af                          ; yes
+                        ld a,e                          ; yes. get keypress again
                         cp c                            ; is this key same as last keypress?
                         jp z, GetMsgInputLoop           ; yes. = debounce
                         ld c, a                         ; no. store key for next debounce check
@@ -688,11 +686,10 @@ GetMsgIdShiftCheck      cp $27                          ; $27=CS - check if caps
                         ret z                           ; back to menu
                         jp nz, GetMsgIdInputLoop        ; no. collect another char
 
-GetMsgIdDelete          push af                         ; yes
-                        ld a,b                          ; let's see if we've got any chars to delete
+GetMsgIdDelete          ld a,b                          ; let's see if we've got any chars to delete
                         cp 5                            ;
                         jp z, GetMsgIdInputLoop         ; no. collect another char
-                        pop af                          ; yes
+                        ld a,e                          ; yes. getkeypress again
                         cp c                            ; is this key same as last keypress?
                         jp z, GetMsgIdInputLoop         ; yes. = debounce
                         ld c, a                         ; no. store key for next debounce check
