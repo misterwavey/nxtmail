@@ -334,11 +334,11 @@ MsgNoSpaces             ret                             ;
 ;
 ; zero pad the entered nick
 ;
-TerminateTargetNick     ld hl, TARGET_NICK_BUF          ;  set trailing $0s after text for remainder of nick
+TerminateTargetNick     ld hl, TARGET_NICK_BUF          ;  set trailing $0s after text for remainder of nick if nick isn't already full
                         ld a, ' '                       ;
                         ld bc, 20                       ;
                         cpir                            ;
-                        jp nz,NoSpaces                  ;
+                        ret nz                          ; z set if found a match, so we're done
                         dec hl                          ; found a space so back up
                         inc c                           ; including counter
                         ld d,h                          ; copy remaining counter's worth of $0s over the rest of the nick
@@ -346,7 +346,7 @@ TerminateTargetNick     ld hl, TARGET_NICK_BUF          ;  set trailing $0s afte
                         inc de                          ;
                         ld (hl), 0                      ;
                         ldir                            ;
-NoSpaces                ret                             ;
+                        ret                             ;
 
 ;
 ; set outgoing message to be tab char (printable and detectable as end of entry)
@@ -846,6 +846,7 @@ KeyLoop                 call ROM_KEY_SCAN               ; d=modifier e=keycode o
                         cp $ff                          ; ff=no
                         ret nz                          ; yes, return
                         jp KeyLoop                      ; otherwise continue to check for input
+
 BAD_MSG_ID              defb "bad message number"       ;
 BAD_MSG_ID_LEN          equ $-BAD_MSG_ID                ;
 BAD_USER_MSG            defb "<no user registered>"     ;
@@ -902,9 +903,9 @@ MSG_ID_PROMPT_LEN       equ $-MSG_ID_PROMPT             ;
 MSG_PRESS_KEY           defb "Press any key to continue";
 MSG_PRESS_KEY_LEN       equ $-MSG_PRESS_KEY             ;
 MSG_UNREG_NICK          defb "Nick is unregistered with NxtMail";
-MSG_NICK_LEN            equ $-MSG_NICK                  ;
-MSG_NICK                defb "Nick: "                   ;
 MSG_UNREG_NICK_LEN      equ $-MSG_UNREG_NICK            ;
+MSG_NICK                defb "Nick: "                   ;
+MSG_NICK_LEN            equ $-MSG_NICK                  ;
 NICK_PROMPT             defb "To nickname: (20 chars. Enter to end)" ;
 NICK_PROMPT_LEN         equ $-NICK_PROMPT               ;
 OFFLINE                 defb "offline"                  ;
