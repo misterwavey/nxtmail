@@ -503,13 +503,20 @@ GetMsgNoShiftPressed    ld a,e                          ; do we have a key press
                         ld hl, ROM_KEYTABLE             ;  hl = code to ascii lookup table
                         add hl, bc                      ;  find ascii given keycode
                         ld a, (hl)                      ;
+;                        add a, $20                      ; add 32 to ascii uppercase to get lowercase
                         pop hl                          ;
                         pop bc                          ;
+
                         cp $20                          ; check if >= 32 (ascii space)
-                        jp c,GetMsgInputLoop            ; no, ignore
+                        jp c, GetMsgInputLoop           ; no, ignore
                         cp $7f                          ; check if <= 126 (ascii ~)
                         jp nc,GetMsgInputLoop           ; no, ignore
-                        cp c                            ; does key = last keypress?
+                        cp $40                          ; >= 'A'?
+                        jp c,NotUppercase               ;
+                        cp $5a                          ;
+                        jp nc, NotUppercase             ;
+                        add a,$20                       ; convert uppercase to lowercase
+NotUppercase            cp c                            ; does key = last keypress?
                         jp z, GetMsgInputLoop           ; yes - debounce
                         ld c, a                         ; no - store char in c for next check
                         ld (hl),a                       ; no - store char in buffer
