@@ -465,19 +465,17 @@ GetMsgInputLoop         PrintLine(3,8,OUT_MESSAGE, 200) ; show current buffer co
                         pop bc                          ;
                         pop hl                          ;
                         ld a,d                          ; do we have a key modifier? (ss CS etc)
-                        cp $ff                          ;
-                        jp nz, GetMsgShiftCheck         ; yes
-                        jp GetMsgNoShiftPressed         ; no
-
-GetMsgShiftCheck        cp $27                          ; $27=CS - check if caps shift is pressed (CS + 0 = delete)
-                        jp nz, GetMsgNoShiftPressed     ; no
+                        cp $ff                          ; ff = no mod keypress?
+                        jp z, GetMsgNotBreakOrDelete    ; if no mod key pressed
+                        cp $27                          ; yes: $27=CS - check if caps shift is pressed (CS + 0 = delete)
+                        jp nz, GetMsgNotBreakOrDelete   ; no
                         ld a,e                          ; yes. check 2nd char
                         cp $23                          ; $23=0 - is 2nd char 0 key? (CS + 0 = delete)
                         jp z, GetMsgDelete              ; yes
                         cp $20                          ; no. is 2nd char SPACE? (CS+SP=break)
                         scf                             ; yes: set carry for return status
-                        ret z                           ; back to menu
-                        jp nz, GetMsgInputLoop          ; no. collect another char
+Break                   ret z                           ; BREAK back to menu
+                        jp GetMsgNotBreakOrDelete       ; no. collect another char
 
 GetMsgDelete            ld a,b                          ; let's see if we've got any chars to delete
                         cp 200                          ;
@@ -491,42 +489,71 @@ GetMsgDelete            ld a,b                          ; let's see if we've got
                         inc b                           ; and collected char count
                         jp GetMsgInputLoop              ; collect another char
 
-GetMsgNoShiftPressed    ld a,e                          ; do we have a key pressed?
-                        cp $ff                          ;
+GetMsgNotBreakOrDelete  ld a,e                          ; do we have a (non mod) key pressed?
+                        cp $ff                          ;  ff means no
                         jp z, GetMsgNoKeyPressed        ; no
-                        cp $21                          ; enter?
-                        ret z                           ;
-                        push bc                         ; we have a keypress without shift
+                        cp $21                          ; yes - was it enter?
+                        jp nz,NoCharsYet                ; not enter
+                        ld a,b                          ; yes enter - check we've got at least 1 char
+                        cp 200                          ;
+                        jp z,NoCharsYet                 ; no: skip enter
+                        ret                             ; yes: we're done
+NoCharsYet              ld a,b                          ; any spare room in the buffer?
+                        cp 0                            ;
+                        jp z, GetMsgInputLoop           ; we can't take any more until delete/enter
+                        ld a,e                          ; not break, not delete, not enter
+                        push bc                         ;
                         push hl                         ;
                         ld b, 0                         ;
                         ld c, a                         ;  bc = keycode value
                         ld hl, ROM_KEYTABLE             ;  hl = code to ascii lookup table
                         add hl, bc                      ;  find ascii given keycode
-                        ld a, (hl)                      ;
-;                        add a, $20                      ; add 32 to ascii uppercase to get lowercase
-                        pop hl                          ;
+                        ld a, (hl)                      ;   A is ascii
+                        cp $40                          ; >= 'A'?  ($41 is 'A')
+                        jp c,NotAZ                      ; < 'A'
+                        cp $5a                          ; <= 'Z'?
+                        jp nc, NotAZ                    ; > 'Z'
+                        add a,$20                       ; convert A-Z uppercase to lowercase
+NotAZ                   pop hl                          ;
                         pop bc                          ;
+                        ld e,a                          ; preserve A as ascii key
+                        ld a,d                          ; recheck modifier key
+                        cp $18                          ; SS?
+                        jp z, HandleSymShift            ;
+                        cp $27                          ; CS?
+                        jp z, HandleCapsShift           ;
+                        ld a,e                          ; restore A as ascii key
+                        jp DoneModifying                ;
 
-                        cp $20                          ; check if >= 32 (ascii space)
-                        jp c, GetMsgInputLoop           ; no, ignore
-                        cp $7f                          ; check if <= 126 (ascii ~)
-                        jp nc,GetMsgInputLoop           ; no, ignore
-                        cp $40                          ; >= 'A'?
-                        jp c,NotUppercase               ;
-                        cp $5a                          ;
-                        jp nc, NotUppercase             ;
-                        add a,$20                       ; convert uppercase to lowercase
-NotUppercase            cp c                            ; does key = last keypress?
+HandleCapsShift         ld a,e                          ; restore A as ascii key
+                        cp $60                          ; >= 'a'?
+                        jp c,NotLowercaseAZ             ;
+                        cp $7a                          ; <= 'z'?
+                        jp nc, NotLowercaseAZ           ;
+                        ; otherwise get uppercase
+                        sub $20                         ; take off 32d to make a-z uppercase
+NotLowercaseAZ          jp DoneModifying                ;
+
+HandleSymShift          ld a,e                          ;   (restore A as ascii keypress)
+                        push hl                         ;
+                        push bc                         ;
+                        ld hl, SSHIFT_TABLE             ;
+                        sub '0'                         ; find offset from ascii 48d
+                        ld b,0                          ;
+                        ld c,a                          ; add offset into SSHIFT table
+                        add hl, bc                      ;
+                        ld a, (hl)                      ;
+                        cp 0                            ; is there a modifier for this key?
+                        jp nz,KeepSymModifier           ; if so: keep current val
+                        ld a,e                          ; if not: restore original ascii key
+KeepSymModifier         pop bc                          ;
+                        pop hl                          ;
+DoneModifying           cp c                            ; does key = last keypress?
                         jp z, GetMsgInputLoop           ; yes - debounce
                         ld c, a                         ; no - store char in c for next check
                         ld (hl),a                       ; no - store char in buffer
                         inc hl                          ;
                         dec b                           ; one less char to collect
-                        ld a,b                          ;
-                        cp 0                            ; collected all chars?
-                        ld a, c                         ;    (restore after the count check)
-                        ccf                             ; clear c for return status
-                        ret z                           ; yes
                         jp GetMsgInputLoop              ; no
 
 GetMsgNoKeyPressed      cp c                            ; is current keycode same as last?
@@ -939,6 +966,9 @@ BOT_ROW                 defb 142,140,140,140,140,140,140,140,140,140,140,140,140
                         defb 140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140;
                         defb 140,140,140,140,140,140,140,140,140,140,141;
 BLANK_ROW               defs 51,' '                     ;
+
+                        ; asc 0  1   2   3   4   5   6   7    8   9  : ; < = > ? @ A  B   C  D E F G  H  I  J   K   L   M   N   O    P  Q  R  S  T  U V W  X  Y  Z
+SSHIFT_TABLE            defb 00,'!','@','#','$','%','&','\'','(',')',0,0,0,0,0,0,0,0,'*','?',0,0,0,0,'^',0,'-','+','=','.',',',";",'\"',0,'<',0,'>',0,0,0,'£',0,':';;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
                         include "esp.asm"               ;
                         include "constants.asm"         ;
