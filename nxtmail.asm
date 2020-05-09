@@ -537,6 +537,7 @@ NotLowercaseAZ          jp DoneModifying                ;
 HandleSymShift          ld a,e                          ;   (restore A as ascii keypress)
                         push hl                         ;
                         push bc                         ;
+; TODO check for a-z 0-9     before shifting
                         ld hl, SSHIFT_TABLE             ;
                         sub '0'                         ; find offset from ascii 48d
                         ld b,0                          ;
