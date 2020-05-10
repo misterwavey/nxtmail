@@ -818,6 +818,7 @@ ProcessGetResponse      ld hl, (ResponseStart)          ;  status byte
                         PrintLine(0,10,MSG_FROM,MSG_FROM_LEN);
                         PrintLineLenVar(0+MSG_FROM_LEN,10,IN_NICK,IN_NICK_LEN);
                         PrintLineLenVar(0,12,IN_MESSAGE,IN_MSG_LEN);
+                        ;PrintChar('X')
                         ret                             ;
 
 PrintBadMsgId           PrintLine(0,15,BAD_MSG_ID,BAD_MSG_ID_LEN) ;
