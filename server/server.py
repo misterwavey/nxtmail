@@ -90,7 +90,7 @@ def handle_request(request, addr, db):
         print("<{threadName}-{addr}>: missing nickname: {request}. Response {response}".format(**locals()))
         return response    
       if len(request) > 44:
-        message = request[44:301]
+        message = request[44:299]
         if message == None or len(message) == 0:
           response = build_response(STATUS_MISSING_MESSAGE)
           print("<{threadName}-{addr}>: MISSING message for send msg cmd. Response {response}".format(**locals()))
