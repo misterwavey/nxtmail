@@ -509,9 +509,9 @@ NoCharsYet              ld a,b                          ; any spare room in the 
                         ld hl, ROM_KEYTABLE             ;  hl = code to ascii lookup table
                         add hl, bc                      ;  find ascii given keycode
                         ld a, (hl)                      ;   A is ascii
-                        cp $40                          ; >= 'A'?  ($41 is 'A')
+                        cp 'A'-1                          ; >= 'A'?  ($41 is 'A')
                         jp c,NotAZ                      ; < 'A'
-                        cp $5a                          ; <= 'Z'?
+                        cp 'Z'+1                         ; <= 'Z'?
                         jp nc, NotAZ                    ; > 'Z'
                         add a,$20                       ; convert A-Z uppercase to lowercase
 NotAZ                   pop hl                          ;
@@ -994,7 +994,7 @@ BLANK_ROW               defs 51,' '                     ;
 SSHIFT_TABLE_NUM        defb 00,'!','@','#','$','%','&','\'','(',')';;;;;;
 
                         ; asc A  B   C  D E F G  H  I  J   K   L   M   N   O    P  Q  R  S  T  U  V  W  X  Y  Z
-SSHIFT_TABLE_AZ         defb 00,'*','?',0,0,0,0,'^',0,'-','+','=','.',',',";",'\"',0,'<',0,'>',0,'/',0,'£',0,':';
+SSHIFT_TABLE_AZ         defb 00,'*','?',0,0,0,0,'^',0,'-','+','=','.',',',";",'\"',0,'<',0,'>',0,'/',0,'`',0,':'; note: ` is £ in speccy
 
                         include "esp.asm"               ;
                         include "constants.asm"         ;
