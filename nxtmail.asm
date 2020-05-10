@@ -464,6 +464,9 @@ GetMsgInputLoop         PrintLine(3,8,OUT_MESSAGE, 200) ; show current buffer co
                         call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
                         pop bc                          ;
                         pop hl                          ;
+;                        ld a,e                          ; do we have a (non mod) key pressed?
+;                        cp $ff                          ;  ff means no
+;                        jp z, GetMsgNoKeyPressed        ; no
                         ld a,d                          ; do we have a key modifier? (ss CS etc)
                         cp $ff                          ; ff = no mod keypress?
                         jp z, GetMsgNotBreakOrDelete    ; if no mod key pressed
@@ -549,7 +552,11 @@ HandleSymShift          ld a,e                          ;   (restore A as ascii 
                         ld a,e                          ; if not: restore original ascii key
 KeepSymModifier         pop bc                          ;
                         pop hl                          ;
-DoneModifying           cp c                            ; does key = last keypress?
+DoneModifying           cp $1f                          ; >= ' '?
+                        jp c,GetMsgNoKeyPressed         ;
+                        cp $7a                          ; <= 'z'?
+                        jp nc, GetMsgNoKeyPressed         ;
+                        cp c                            ; does key = last keypress?
                         jp z, GetMsgInputLoop           ; yes - debounce
                         ld c, a                         ; no - store char in c for next check
                         ld (hl),a                       ; no - store char in buffer
@@ -969,7 +976,7 @@ BOT_ROW                 defb 142,140,140,140,140,140,140,140,140,140,140,140,140
 BLANK_ROW               defs 51,' '                     ;
 
                         ; asc 0  1   2   3   4   5   6   7    8   9  : ; < = > ? @ A  B   C  D E F G  H  I  J   K   L   M   N   O    P  Q  R  S  T  U V W  X  Y  Z
-SSHIFT_TABLE            defb 00,'!','@','#','$','%','&','\'','(',')',0,0,0,0,0,0,0,0,'*','?',0,0,0,0,'^',0,'-','+','=','.',',',";",'\"',0,'<',0,'>',0,0,0,'£',0,':';;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+SSHIFT_TABLE            defb 00,'!','@','#','$','%','&','\'','(',')',0,0,0,0,0,0,0,0,'*','?',0,0,0,0,'^',0,'-','+','=','.',',',";",'\"',0,'<',0,'>',0,0,0,'£',0,':';;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
                         include "esp.asm"               ;
                         include "constants.asm"         ;
