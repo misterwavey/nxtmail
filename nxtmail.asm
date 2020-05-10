@@ -464,9 +464,6 @@ GetMsgInputLoop         PrintLine(3,8,OUT_MESSAGE, 200) ; show current buffer co
                         call ROM_KEY_SCAN               ; d=modifier e=keycode or $ff
                         pop bc                          ;
                         pop hl                          ;
-;                        ld a,e                          ; do we have a (non mod) key pressed?
-;                        cp $ff                          ;  ff means no
-;                        jp z, GetMsgNoKeyPressed        ; no
                         ld a,d                          ; do we have a key modifier? (ss CS etc)
                         cp $ff                          ; ff = no mod keypress?
                         jp z, GetMsgNotBreakOrDelete    ; if no mod key pressed
@@ -529,9 +526,9 @@ NotAZ                   pop hl                          ;
                         jp DoneModifying                ;
 
 HandleCapsShift         ld a,e                          ; restore A as ascii key
-                        cp $60                          ; >= 'a'?
+                        cp 'a'                          ; >= 'a'?
                         jp c,NotLowercaseAZ             ;
-                        cp $7a                          ; <= 'z'?
+                        cp 'z'+1                        ; <= 'z'?
                         jp nc, NotLowercaseAZ           ;
                         ; otherwise get uppercase
                         sub $20                         ; take off 32d to make a-z uppercase
@@ -540,22 +537,40 @@ NotLowercaseAZ          jp DoneModifying                ;
 HandleSymShift          ld a,e                          ;   (restore A as ascii keypress)
                         push hl                         ;
                         push bc                         ;
-; TODO check for a-z 0-9     before shifting
-                        ld hl, SSHIFT_TABLE             ;
-                        sub '0'                         ; find offset from ascii 48d
+                        cp '0'                          ; between 0-1?
+                        jp c,NotNum                     ;
+                        cp '9'+1                        ;
+                        jp nc,NotNum                    ;
+                        ld hl, SSHIFT_TABLE_NUM         ; yes, use num lookup table
+                        sub '0'                         ; find offset from ascii
                         ld b,0                          ;
                         ld c,a                          ; add offset into SSHIFT table
                         add hl, bc                      ;
                         ld a, (hl)                      ;
                         cp 0                            ; is there a modifier for this key?
-                        jp nz,KeepSymModifier           ; if so: keep current val
+                        jp nz,DoneSymMod                ; if so: keep current val
                         ld a,e                          ; if not: restore original ascii key
-KeepSymModifier         pop bc                          ;
+                        jp DoneSymMod                   ;
+
+NotNum                  cp 'a'                          ; between a-z?
+                        jp c,DoneSymMod                 ;
+                        cp 'z'+1                        ;
+                        jp nc,DoneSymMod                ;
+                        ld hl, SSHIFT_TABLE_AZ          ; yes, use az lookup table
+                        sub 'a'                         ; find offset from ascii
+                        ld b,0                          ;
+                        ld c,a                          ; add offset into SSHIFT table
+                        add hl, bc                      ;
+                        ld a, (hl)                      ;
+                        cp 0                            ; is there a modifier for this key?
+                        jp nz,DoneSymMod                ; if so: keep current val
+                        ld a,e                          ; if not: restore original ascii key
+DoneSymMod              pop bc                          ;
                         pop hl                          ;
-DoneModifying           cp $1f                          ; >= ' '?
+DoneModifying           cp ' '                          ; >= ' '?
                         jp c,GetMsgNoKeyPressed         ;
-                        cp $7a                          ; <= 'z'?
-                        jp nc, GetMsgNoKeyPressed         ;
+                        cp 'z' + 1                      ; <= 'z'?
+                        jp nc, GetMsgNoKeyPressed       ;
                         cp c                            ; does key = last keypress?
                         jp z, GetMsgInputLoop           ; yes - debounce
                         ld c, a                         ; no - store char in c for next check
@@ -975,8 +990,11 @@ BOT_ROW                 defb 142,140,140,140,140,140,140,140,140,140,140,140,140
                         defb 140,140,140,140,140,140,140,140,140,140,141;
 BLANK_ROW               defs 51,' '                     ;
 
-                        ; asc 0  1   2   3   4   5   6   7    8   9  : ; < = > ? @ A  B   C  D E F G  H  I  J   K   L   M   N   O    P  Q  R  S  T  U V W  X  Y  Z
-SSHIFT_TABLE            defb 00,'!','@','#','$','%','&','\'','(',')',0,0,0,0,0,0,0,0,'*','?',0,0,0,0,'^',0,'-','+','=','.',',',";",'\"',0,'<',0,'>',0,0,0,'£',0,':';;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                        ; asc 0  1   2   3   4   5   6   7    8   9
+SSHIFT_TABLE_NUM        defb 00,'!','@','#','$','%','&','\'','(',')';;;;;;
+
+                        ; asc A  B   C  D E F G  H  I  J   K   L   M   N   O    P  Q  R  S  T  U  V  W  X  Y  Z
+SSHIFT_TABLE_AZ         defb 00,'*','?',0,0,0,0,'^',0,'-','+','=','.',',',";",'\"',0,'<',0,'>',0,'/',0,'£',0,':';
 
                         include "esp.asm"               ;
                         include "constants.asm"         ;
