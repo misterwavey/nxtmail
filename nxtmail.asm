@@ -764,8 +764,15 @@ GetMsgIdNoShiftPressed  ld a,e                          ; do we have a key press
                         cp $ff                          ;
                         jp z, GetMsgIdNoKeyPressed      ; no
                         cp $21                          ; yes: is it enter?
-                        ret z                           ; yes, we're done
-                        push bc                         ; no: so we have a keypress without shift
+                        jp nz,NotMsgIdEnter             ;
+                        ld a,b                          ; check we've got at least 1 char
+                        cp 5                            ;
+                        ret nz                          ; yes, we're done
+NotMsgIdEnter           ld a,b                          ; check
+                        cp 0                            ;
+                        jp z, GetMsgIdInputLoop         ; ignore input until delete
+                        ld a,e                          ;
+                        push bc                         ; no: don't exit with enter
                         push hl                         ;
                         ld b, 0                         ;
                         ld c, a                         ;  bc = keycode value
@@ -787,8 +794,6 @@ GetMsgIdNoShiftPressed  ld a,e                          ; do we have a key press
                         ld (hl),a                       ; no - store ascii char in buffer
                         inc hl                          ;
                         dec b                           ; one less char to collect
-                        ld a, c                         ;    (restore after the count check)
-                        ret z                           ; is b now 0? return if so
                         jp GetMsgIdInputLoop            ; no
 
 GetMsgIdNoKeyPressed    cp c                            ; is current keycode same as last? ($ff if no key pressed)
@@ -818,7 +823,7 @@ ProcessGetResponse      ld hl, (ResponseStart)          ;  status byte
                         PrintLine(0,10,MSG_FROM,MSG_FROM_LEN);
                         PrintLineLenVar(0+MSG_FROM_LEN,10,IN_NICK,IN_NICK_LEN);
                         PrintLineLenVar(0,12,IN_MESSAGE,IN_MSG_LEN);
-                        ;PrintChar('X')
+                        ; PrintChar('X')
                         ret                             ;
 
 PrintBadMsgId           PrintLine(0,15,BAD_MSG_ID,BAD_MSG_ID_LEN) ;
@@ -997,7 +1002,7 @@ BOT_ROW                 defb 142,140,140,140,140,140,140,140,140,140,140,140,140
 BLANK_ROW               defs 51,' '                     ;
 
                         ; asc 0  1   2   3   4   5   6   7    8   9
-SSHIFT_TABLE_NUM        defb 00,'!','@','#','$','%','&','\'','(',')';;;;;;;;;;
+SSHIFT_TABLE_NUM        defb 00,'!','@','#','$','%','&','\'','(',')';;;;;;;;;;;;;;
 
                         ; asc A  B   C  D E F G  H  I  J   K   L   M   N   O    P  Q  R  S  T  U  V  W  X  Y  Z
 SSHIFT_TABLE_AZ         defb 00,'*','?',0,0,0,0,'^',0,'-','+','=','.',',',";",'\"',0,'<',0,'>',0,'/',0,'`',0,':'; note: ` is £ in speccy
