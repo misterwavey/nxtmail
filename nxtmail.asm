@@ -422,9 +422,14 @@ GetNickDelete           ld a,b                          ; let's see if we've got
 GetNickNoShiftPressed   ld a,e                          ; do we have a key pressed?
                         cp $ff                          ;
                         jp z, GetNickNoKeyPressed       ; no
-                        cp $21                          ; enter?
-                        ret z                           ; yes. we're done here
-                        ld a, b                         ; can we allow more chars?
+                        cp $21                          ; yes - enter pressed?
+                        jp nz,NickNotEnter              ;
+                        ld a,b                          ; have we got at least 1 char?
+                        cp 20                           ;
+                        scf                             ; clear carry for return
+                        ccf                             ;
+                        ret nz                          ; yes. we're done here
+NickNotEnter            ld a, b                         ; can we allow more chars?
                         cp 0                            ; got all our chars?
                         ld a,e                          ;   place key into a again
                         jp z, GetNickNoKeyPressed       ; not allowed any more chars until delete is pressed
@@ -509,9 +514,9 @@ NoCharsYet              ld a,b                          ; any spare room in the 
                         ld hl, ROM_KEYTABLE             ;  hl = code to ascii lookup table
                         add hl, bc                      ;  find ascii given keycode
                         ld a, (hl)                      ;   A is ascii
-                        cp 'A'-1                          ; >= 'A'?  ($41 is 'A')
+                        cp 'A'-1                        ; >= 'A'?  ($41 is 'A')
                         jp c,NotAZ                      ; < 'A'
-                        cp 'Z'+1                         ; <= 'Z'?
+                        cp 'Z'+1                        ; <= 'Z'?
                         jp nc, NotAZ                    ; > 'Z'
                         add a,$20                       ; convert A-Z uppercase to lowercase
 NotAZ                   pop hl                          ;
@@ -991,7 +996,7 @@ BOT_ROW                 defb 142,140,140,140,140,140,140,140,140,140,140,140,140
 BLANK_ROW               defs 51,' '                     ;
 
                         ; asc 0  1   2   3   4   5   6   7    8   9
-SSHIFT_TABLE_NUM        defb 00,'!','@','#','$','%','&','\'','(',')';;;;;;
+SSHIFT_TABLE_NUM        defb 00,'!','@','#','$','%','&','\'','(',')';;;;;;;;;;
 
                         ; asc A  B   C  D E F G  H  I  J   K   L   M   N   O    P  Q  R  S  T  U  V  W  X  Y  Z
 SSHIFT_TABLE_AZ         defb 00,'*','?',0,0,0,0,'^',0,'-','+','=','.',',',";",'\"',0,'<',0,'>',0,'/',0,'`',0,':'; note: ` is £ in speccy
