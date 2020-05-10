@@ -90,12 +90,13 @@ def handle_request(request, addr, db):
         print("<{threadName}-{addr}>: missing nickname: {request}. Response {response}".format(**locals()))
         return response    
       if len(request) > 44:
-        message = request[44:299]
+        message = request[44:301]
         if message == None or len(message) == 0:
           response = build_response(STATUS_MISSING_MESSAGE)
           print("<{threadName}-{addr}>: MISSING message for send msg cmd. Response {response}".format(**locals()))
           return response
         message = message.decode()
+        message = message[0:-2] # remove /r/n common to all requests
         printable = set(string.printable) #ascii only
         message = "".join(filter(lambda x: x in printable, message))
         if message == None or len(message) == 0:
