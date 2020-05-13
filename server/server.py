@@ -10,8 +10,8 @@ CMD_CHECK_REGISTERED_NICKNAME  = 2
 CMD_SEND_MESSAGE               = 3
 CMD_MESSGAGE_COUNT             = 4
 CMD_GET_MESSAGE                = 5
-CMD_GET_RANDOM_USERS           = 6 # ?
-CMD_AWAIT_USERS                = 7 # session / group?
+CMD_JOIN_POOL                  = 6 
+CMD_GET_POOL                   = 7 
 
 STATUS_OK                      = 0
 STATUS_INVALID_PROTOCOL        = 1
