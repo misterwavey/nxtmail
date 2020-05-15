@@ -24,16 +24,19 @@ STATUS_MISSING_NICKNAME        = 7
 STATUS_MISSING_MESSAGE         = 8
 STATUS_UNIMPLEMENTED           = 9
 STATUS_MISSING_MESSAGE_ID      = 10
+STATUS_MISSING_POOL_SIZE       = 11
 
 STATUS_USER_ALREADY_REGISTERED = 101
 STATUS_UNREGISTERED_NICKNAME   = 102
 STATUS_UNKNOWN_USERID          = 103
 STATUS_UNREGISTERED_USERID     = 104
+STATUS_UNKNOWN_POOL_ID         = 105
 
 STATUS_REGISTER_OK             = 201
 STATUS_COUNT_OK                = 202
 STATUS_GET_MESSAGE_OK          = 203
 STATUS_INVALID_MESSAGE_ID      = 204
+STATUS_JOINED_POOL             = 205
 
 
 def on_new_client(clientsocket, addr, db):
@@ -118,8 +121,6 @@ def handle_request(request, addr, db):
         response = build_response(STATUS_MISSING_MESSAGE_ID)
         return response
       else:    
-        byte1 = request[24]
-        byte2 = request[25]
         b = bytes(request[24:26])
         messageId = int.from_bytes(b,byteorder="little")
         print ("<{threadName}-{addr}> extracted '{messageId}' for message id".format(**locals()))
@@ -128,12 +129,84 @@ def handle_request(request, addr, db):
           response = build_response(STATUS_INVALID_MESSAGE_ID)
           return response          
 
-      return handle_get_message(appId, userId, messageId, addr, db)
+        return handle_get_message(appId, userId, messageId, addr, db)
+
+    elif cmd == CMD_JOIN_POOL:
+      if len(request) < 25:
+        print ("<{threadName}-{addr}> missing size for join pool".format(**locals()))
+        response = build_response(STATUS_MISSING_POOL_SIZE)
+        return response
+      size = request[24]
+      return handle_join_pool(appId, userId, size, addr, db)
+
+    elif cmd == CMD_GET_POOL:
+      response = build_response(STATUS_UNIMPLEMENTED)
 
     else:
       response = build_response(STATUS_INVALID_CMD)
       print("<{threadName}-{addr}>: invalid cmd: {request}. Response {response}".format(**locals()))
       return response
+
+def handle_join_pool(appId, userId, size, addr, db):
+  threadName = threading.currentThread().name    
+  # todo: ensure userid is registered for app
+  print ("<{threadName}-{addr}> userId {userId} joining pool of size {size} for appid {appId} in db ".format(**locals()))
+  
+  db.begin() # start transaction 
+  
+  cursor = db.cursor()
+  try:
+      sql = "select poolId from pool where appId like %s and size = %s and filled = false for update"      
+      cursor.execute(sql, (appId, size))
+      results = cursor.fetchone()  
+      if results == None:
+        return handle_new_pool(appId, userId, size, addr, db)  
+      else:
+        poolId = results[0]
+        return handle_join_unfilled_pool(poolId, appId, userId, size, addr, db)        
+  except IntegrityError as e:
+      print ("Caught an IntegrityError:"+str(e))
+      return build_response(STATUS_INTERNAL_ERROR)
+
+def handle_new_pool(appId, userId, size, addr, db):
+  threadName = threading.currentThread().name    
+  print ("<{threadName}-{addr}> no existing pool of size {size} for appid {appId} in db ".format(**locals()))
+
+  cursor = db.cursor()
+  unixtime_ms = time.time_ns() // 1000000
+
+  sql = "INSERT INTO pool (appid, size, filled, created_unixtime_ms, updated_unixtime_ms) VALUES (%s, %s, %s, %s, %s)"
+  cursor.execute(sql, (appId, size, False, unixtime_ms, unixtime_ms))
+
+  sql = "select last_insert_id()" # the last row's primary key that was inserted by us
+  cursor.execute(sql)
+  poolId = cursor.fetchone()[0]
+
+  sql = "INSERT INTO user_in_pool (poolId, userId) VALUES (%s, %s)"
+  cursor.execute(sql, (poolId, userId))
+  
+  db.commit() # transaction end
+  response = bytes([STATUS_JOINED_POOL] + list(poolId.to_bytes(2, byteorder="little")))
+  return response
+
+def handle_join_unfilled_pool(poolId, appId, userId, size, addr, db):
+  cursor = db.cursor()
+  sql = "INSERT INTO user_in_pool (poolId, userId) VALUES (%s, %s)"
+  cursor.execute(sql, (poolId, userId))
+
+  sql = "select count(*) from user_in_pool where poolId = %s"
+  cursor.execute(sql, (poolId))
+  results = cursor.fetchone()
+  users = results[0]
+  if users == size:
+    unixtime_ms = time.time_ns() // 1000000
+    sql = "update pool set filled=true,updated_unixtime_ms=%s where poolId = %s"
+    cursor.execute(sql, (unixtime_ms, poolId))
+  
+  db.commit() # transaction end
+  response = bytes([STATUS_JOINED_POOL] + list(poolId.to_bytes(2, byteorder="little")))
+  return response
+  
 
 def parse_param_as_nickname(request):
   if len(request) > 24:
@@ -181,13 +254,13 @@ def do_store_message(userId, appId, nickname, message, addr, db):
 
   unixtime_ms = time.time_ns() // 1000000 #meh
   try:
-      sql = "INSERT INTO message (appid, authorUserId, targetUserId, message, unixtime_ms) VALUES (%s, %s, %s, %s, %s)"
-      cursor.execute(sql, (appId, userId, targetUserId, message, unixtime_ms))
-      db.commit()
-      return STATUS_OK
+    sql = "INSERT INTO message (appid, authorUserId, targetUserId, message, unixtime_ms) VALUES (%s, %s, %s, %s, %s)"
+    cursor.execute(sql, (appId, userId, targetUserId, message, unixtime_ms))
+    db.commit()
+    return STATUS_OK
   except IntegrityError as e:
-      print ("Caught an IntegrityError:"+str(e))
-      return STATUS_INTERNAL_ERROR
+    print ("Caught an IntegrityError:"+str(e))
+    return STATUS_INTERNAL_ERROR
 
 
 def get_userid_for_nickname(appId, nickname, addr, db):
@@ -210,7 +283,10 @@ def get_userid_for_nickname(appId, nickname, addr, db):
 
 def handle_get_message(appId, userId, messageId, addr, db):
   threadName = threading.currentThread().name  
-
+  if not(isValidUserIdForApp(userId, appId, db)):
+    response = build_response(STATUS_UNREGISTERED_USERID)
+    print ("<{threadName}-{addr}>: userId {userId} is not registered with app {appId} in db. Response {response}".format(**locals()))
+    return response 
   cursor = db.cursor()
   try:  
     sql = "select messageId from message where appId = %s and targetUserId like %s order by messageId"
@@ -280,7 +356,11 @@ def lookup_nick_for_userid(userId,db,addr):
     return None
 
 def handle_get_message_count(appId, userId, addr, db):
-  threadName = threading.currentThread().name    
+  threadName = threading.currentThread().name   
+  if not(isValidUserIdForApp(userId, appId, db)):
+    response = build_response(STATUS_UNREGISTERED_USERID)
+    print ("<{threadName}-{addr}>: userId {userId} is not registered with app {appId} in db. Response {response}".format(**locals()))
+    return response 
   cursor = db.cursor()
   try:
     sql = "select count(*) from message where appId = %s and targetUserId like %s order by messageId"

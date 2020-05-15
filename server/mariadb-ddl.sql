@@ -55,3 +55,18 @@ message varchar(255) not null,
 unixtime_ms bigint unsigned not null,           -- 0-18446744073709551615
 primary key(messageId)                          -- --now:1587202163242
 );
+
+create table pool (
+poolId smallint unsigned auto_increment, -- 0-65535 (2 bytes)
+appId tinyint unsigned not null,
+size tinyint unsigned not null,
+filled boolean not null,
+created_unixtime_ms bigint unsigned not null,
+updated_unixtime_ms bigint unsigned not null,
+primary key(poolId)
+);
+
+create table user_in_pool (
+poolId int unsigned not null, -- FK into pool?
+userId varchar(23) not null   -- FK into user?
+);
