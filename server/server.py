@@ -38,6 +38,7 @@ STATUS_GET_MESSAGE_OK          = 203
 STATUS_INVALID_MESSAGE_ID      = 204
 STATUS_JOINED_POOL             = 205
 STATUS_INVALID_POOLSIZE        = 206
+STATUS_ALREADY_JOINED_POOL     = 207
 
 def on_new_client(clientsocket, addr, db):
     done = False
@@ -166,7 +167,7 @@ def handle_join_pool(appId, userId, size, addr, db):
   
   cursor = db.cursor()
 
-  # is our user already in an unfilled pool?  
+  # A is our user already in an unfilled pool? return it if so
   try:
       sql = """
       select p.poolId from pool p inner join user_in_pool u 
@@ -177,15 +178,15 @@ def handle_join_pool(appId, userId, size, addr, db):
         u.poolId = p.poolId"""     
       cursor.execute(sql, (appId, size, userId))
       results = cursor.fetchone()  
-      if results == None:
-        return handle_new_pool(appId, userId, size, addr, db)  
-      else:
+      if not(results == None):
         poolId = results[0]
-        return handle_join_unfilled_pool(poolId, appId, userId, size, addr, db)        
+        response = bytes([STATUS_ALREADY_JOINED_POOL] + list(poolId.to_bytes(2, byteorder="little")))
+        return response 
   except IntegrityError as e:
       print ("Caught an IntegrityError:"+str(e))
       return build_response(STATUS_INTERNAL_ERROR)
 
+  # B is there an unfilled pool that our user isn't a member of? join if so, otherwise create new pool
   try:
       sql = """
       select p.poolId from pool p inner join user_in_pool u 
@@ -458,7 +459,7 @@ def do_check_registered_nickname_for_app(appId, userId, nickname, addr, db):
 
 def isValidUserId(userId, db):
   cursor = db.cursor()
-  sql = "select * from mbox.user where userId like %s"
+  sql = "select * from mbox.user where userId = %s"
   cursor.execute(sql, (userId))
   results = cursor.fetchone()
   return results != None
@@ -466,7 +467,7 @@ def isValidUserId(userId, db):
 
 def isValidUserIdForApp(userId, appId, db):
   cursor = db.cursor()
-  sql = "select * from mbox.app_user where userId like %s and appid = %s"
+  sql = "select * from mbox.app_user where userId = %s and appid = %s"
   cursor.execute(sql, (userId, appId))
   results = cursor.fetchone()
   return results != None
@@ -476,7 +477,7 @@ def handle_register(appId, userId, addr, db):
   threadName = threading.currentThread().name    
   alreadyRegistered = False
   cursor = db.cursor()
-  sql = "select * from mbox.app_user where userId like %s and appid =%s"
+  sql = "select * from mbox.app_user where userId = %s and appid = %s"
   cursor.execute(sql, (userId, appId))
   results = cursor.fetchone()
   #print(results)
