@@ -37,7 +37,7 @@ STATUS_COUNT_OK                = 202
 STATUS_GET_MESSAGE_OK          = 203
 STATUS_INVALID_MESSAGE_ID      = 204
 STATUS_JOINED_POOL             = 205
-
+STATUS_INVALID_POOLSIZE        = 206
 
 def on_new_client(clientsocket, addr, db):
     done = False
@@ -148,16 +148,54 @@ def handle_request(request, addr, db):
       return response
 
 def handle_join_pool(appId, userId, size, addr, db):
-  threadName = threading.currentThread().name    
-  # todo: ensure userid is registered for app
+  threadName = threading.currentThread().name  
+  if not(isValidUserIdForApp(userId, appId, db)):
+    response = build_response(STATUS_UNREGISTERED_USERID)
+    print ("<{threadName}-{addr}>: userId {userId} is not registered with app {appId} in db. Response {response}".format(**locals()))
+    return response 
+
+  if not(size > 1 and size <= 16):
+    response = build_response(STATUS_INVALID_POOLSIZE)
+    print ("<{threadName}-{addr}>: app {appId} asking for invalid size {size}. Response {response}".format(**locals()))
+    return response   
+
   print ("<{threadName}-{addr}> userId {userId} joining pool of size {size} for appid {appId} in db ".format(**locals()))
-  
+ 
+
   db.begin() # start transaction 
   
   cursor = db.cursor()
+
+  # is our user already in an unfilled pool?  
   try:
-      sql = "select poolId from pool where appId like %s and size = %s and filled = false for update"      
-      cursor.execute(sql, (appId, size))
+      sql = """
+      select p.poolId from pool p inner join user_in_pool u 
+      where p.appId = %s and 
+        p.size = %s and 
+        p.filled = false and 
+        u.userId = %s and 
+        u.poolId = p.poolId"""     
+      cursor.execute(sql, (appId, size, userId))
+      results = cursor.fetchone()  
+      if results == None:
+        return handle_new_pool(appId, userId, size, addr, db)  
+      else:
+        poolId = results[0]
+        return handle_join_unfilled_pool(poolId, appId, userId, size, addr, db)        
+  except IntegrityError as e:
+      print ("Caught an IntegrityError:"+str(e))
+      return build_response(STATUS_INTERNAL_ERROR)
+
+  try:
+      sql = """
+      select p.poolId from pool p inner join user_in_pool u 
+      where p.appId = %s and 
+        p.size = %s and 
+        p.filled = false and 
+        u.userId <> %s and 
+        u.poolId = p.poolId 
+      for update"""      
+      cursor.execute(sql, (appId, size, userId))
       results = cursor.fetchone()  
       if results == None:
         return handle_new_pool(appId, userId, size, addr, db)  
@@ -261,6 +299,7 @@ def do_store_message(userId, appId, nickname, message, addr, db):
   except IntegrityError as e:
     print ("Caught an IntegrityError:"+str(e))
     return STATUS_INTERNAL_ERROR
+ 
 
 
 def get_userid_for_nickname(appId, nickname, addr, db):

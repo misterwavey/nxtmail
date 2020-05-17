@@ -45,6 +45,7 @@ CONSTRAINT unique_fields UNIQUE (appid, userid)
 
 --insert into app_user values (1,'bahoj-sibof-lobut-sujar');
 
+drop table message;
 
 create table message (
 messageId int unsigned auto_increment, -- 0-4294967295
@@ -56,6 +57,8 @@ unixtime_ms bigint unsigned not null,           -- 0-18446744073709551615
 primary key(messageId)                          -- --now:1587202163242
 );
 
+drop table pool;
+
 create table pool (
 poolId smallint unsigned auto_increment, -- 0-65535 (2 bytes)
 appId tinyint unsigned not null,
@@ -63,10 +66,24 @@ size tinyint unsigned not null,
 filled boolean not null,
 created_unixtime_ms bigint unsigned not null,
 updated_unixtime_ms bigint unsigned not null,
+user1 varchar(23) not null,
+user2 varchar(23),
+user3 varchar(23),
+user4 varchar(23),
+user5 varchar(23),
+user6 varchar(23),
+user7 varchar(23),
+user8 varchar(23),
+user9 varchar(23),
+user10 varchar(23),
+user11 varchar(23),
+user12 varchar(23),
+user13 varchar(23),
+user14 varchar(23),
+user15 varchar(23),
+user16 varchar(23),
 primary key(poolId)
 );
 
-create table user_in_pool (
-poolId int unsigned not null, -- FK into pool?
-userId varchar(23) not null   -- FK into user?
-);
+drop table user_in_pool;
+
