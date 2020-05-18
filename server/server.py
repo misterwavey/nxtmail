@@ -25,6 +25,7 @@ STATUS_MISSING_MESSAGE         = 8
 STATUS_UNIMPLEMENTED           = 9
 STATUS_MISSING_MESSAGE_ID      = 10
 STATUS_MISSING_POOL_SIZE       = 11
+STATUS_MISSING_POOL_ID         = 12
 
 STATUS_USER_ALREADY_REGISTERED = 101
 STATUS_UNREGISTERED_NICKNAME   = 102
@@ -39,6 +40,10 @@ STATUS_INVALID_MESSAGE_ID      = 204
 STATUS_JOINED_POOL             = 205
 STATUS_INVALID_POOLSIZE        = 206
 STATUS_ALREADY_JOINED_POOL     = 207
+STATUS_POOL_UNFILLED           = 208
+STATUS_POOL_FILLED             = 209
+
+
 
 def on_new_client(clientsocket, addr, db):
     done = False
@@ -119,35 +124,107 @@ def handle_request(request, addr, db):
     elif cmd == CMD_GET_MESSAGE:
       if len(request) < 26: #2bytes for msgid
         print ("<{threadName}-{addr}> missing message Id for get message".format(**locals()))
-        response = build_response(STATUS_MISSING_MESSAGE_ID)
-        return response
+        return build_response(STATUS_MISSING_MESSAGE_ID)
       else:    
         b = bytes(request[24:26])
         messageId = int.from_bytes(b,byteorder="little")
         print ("<{threadName}-{addr}> extracted '{messageId}' for message id".format(**locals()))
         if messageId < 1:
           print ("<{threadName}-{addr}> invalid number '{messageId}' for message id".format(**locals()))
-          response = build_response(STATUS_INVALID_MESSAGE_ID)
-          return response          
+          return build_response(STATUS_INVALID_MESSAGE_ID)
 
         return handle_get_message(appId, userId, messageId, addr, db)
 
     elif cmd == CMD_JOIN_POOL:
       if len(request) < 25:
         print ("<{threadName}-{addr}> missing size for join pool".format(**locals()))
-        response = build_response(STATUS_MISSING_POOL_SIZE)
-        return response
+        return build_response(STATUS_MISSING_POOL_SIZE)
       size = request[24]
       return handle_join_pool(appId, userId, size, addr, db)
 
     elif cmd == CMD_GET_POOL:
-      response = build_response(STATUS_UNIMPLEMENTED)
+      if len(request) < 26: # 2 bytes for poolId
+        print ("<{threadName}-{addr}> missing poolId for get pool".format(**locals()))
+        return build_response(STATUS_MISSING_POOL_ID)
+      else:    
+        b = bytes(request[24:26])
+        poolId = int.from_bytes(b,byteorder="little")
+        print ("<{threadName}-{addr}> extracted '{poolId}' for poolId".format(**locals()))
+        if poolId < 1:
+          print ("<{threadName}-{addr}> invalid number '{poolId}' for poolId".format(**locals()))
+          return build_response(STATUS_INVALID_POOL_ID)
+
+      return handle_get_pool(appId, userId, poolId, addr, db)
 
     else:
       response = build_response(STATUS_INVALID_CMD)
       print("<{threadName}-{addr}>: invalid cmd: {request}. Response {response}".format(**locals()))
       return response
 
+def handle_get_pool(appId, userId, poolId, addr, db):
+  threadName = threading.currentThread().name  
+  if not(isValidUserIdForApp(userId, appId, db)):
+    response = build_response(STATUS_UNREGISTERED_USERID)
+    print ("<{threadName}-{addr}>: userId {userId} is not registered with app {appId} in db. Response {response}".format(**locals()))
+    return response 
+
+  cursor = db.cursor()
+
+  # A is our user in an unfilled pool? return it if so
+  try:
+    sql = """
+    select p.poolId from pool p inner join user_in_pool u 
+    where 
+      p.appId = %s and 
+      u.poolId = p.poolId and 
+      p.poolId = %s and 
+      p.filled=false and 
+      u.userId = %s"""     
+    cursor.execute(sql, (appId, poolId, userId))
+    results = cursor.fetchone()  
+    if not(results == None):
+      poolId = results[0]
+      print("A: user is in an unfilled pool: poolId {poolId}".format(**locals()))
+      return bytes([STATUS_POOL_UNFILLED]) 
+  except IntegrityError as e:
+    print ("Caught an IntegrityError:"+str(e))
+    return build_response(STATUS_INTERNAL_ERROR)
+
+  # B is our user in a filled pool? return it if so
+  try:
+    sql = """
+    select u.userId from pool p right join user_in_pool u on u.poolId = p.poolId 
+      where 
+      p.appid=%s and 
+      u.poolId = p.poolId and 
+      p.filled=true and 
+      p.poolId = %s"""    
+    cursor.execute(sql, (appId, poolId))
+    resultNicks = cursor.fetchall()  
+    if not(resultNicks == None):
+      nickList = []
+      for i in resultNicks:
+        nickList.append(str(len(i[0])))
+        nickList.append(i[0])
+        print("nickList {nickList}".format(**locals()))
+      nickListStr = str(len(nickList))
+      print("nickListStr {nickListStr}".format(**locals()))
+      nickListStr = nickListStr.join(nickList)
+      print("nickListStr {nickListStr}".format(**locals()))
+      response = bytes([STATUS_POOL_FILLED] + list(nickListStr.encode()))
+      print ("B: user is in filled pool {poolId} with nicks {resultNicks}. response {response}".format(**locals()))
+      for i in response:
+        print(i)
+      return response
+  except IntegrityError as e:
+    print ("Caught an IntegrityError:"+str(e))
+    return build_response(STATUS_INTERNAL_ERROR)
+
+  # C our user is not in a pool
+  print("C: user is not in named pool: poolId {poolId}".format(**locals()))
+  return build_response(STATUS_UNKNOWN_POOL_ID)
+  
+   
 def handle_join_pool(appId, userId, size, addr, db):
   threadName = threading.currentThread().name  
   if not(isValidUserIdForApp(userId, appId, db)):
@@ -161,7 +238,6 @@ def handle_join_pool(appId, userId, size, addr, db):
     return response   
 
   print ("<{threadName}-{addr}> userId {userId} joining pool of size {size} for appid {appId} in db ".format(**locals()))
- 
 
   db.begin() # start transaction 
   
@@ -169,43 +245,42 @@ def handle_join_pool(appId, userId, size, addr, db):
 
   # A is our user already in an unfilled pool? return it if so
   try:
-      sql = """
-      select p.poolId from pool p inner join user_in_pool u 
-      where p.appId = %s and 
-        p.size = %s and 
-        p.filled = false and 
-        u.userId = %s and 
-        u.poolId = p.poolId"""     
-      cursor.execute(sql, (appId, size, userId))
-      results = cursor.fetchone()  
-      if not(results == None):
-        poolId = results[0]
-        response = bytes([STATUS_ALREADY_JOINED_POOL] + list(poolId.to_bytes(2, byteorder="little")))
-        return response 
+    sql = """
+    select p.poolId from pool p inner join user_in_pool u 
+    where p.appId = %s and 
+      p.size = %s and 
+      p.filled = false and 
+      u.userId = %s and 
+      u.poolId = p.poolId"""     
+    cursor.execute(sql, (appId, size, userId))
+    results = cursor.fetchone()  
+    if not(results == None):
+      poolId = results[0]
+      return bytes([STATUS_ALREADY_JOINED_POOL] + list(poolId.to_bytes(2, byteorder="little")))
   except IntegrityError as e:
-      print ("Caught an IntegrityError:"+str(e))
-      return build_response(STATUS_INTERNAL_ERROR)
+    print ("Caught an IntegrityError:"+str(e))
+    return build_response(STATUS_INTERNAL_ERROR)
 
   # B is there an unfilled pool that our user isn't a member of? join if so, otherwise create new pool
   try:
-      sql = """
-      select p.poolId from pool p inner join user_in_pool u 
-      where p.appId = %s and 
-        p.size = %s and 
-        p.filled = false and 
-        u.userId <> %s and 
-        u.poolId = p.poolId 
-      for update"""      
-      cursor.execute(sql, (appId, size, userId))
-      results = cursor.fetchone()  
-      if results == None:
-        return handle_new_pool(appId, userId, size, addr, db)  
-      else:
-        poolId = results[0]
-        return handle_join_unfilled_pool(poolId, appId, userId, size, addr, db)        
+    sql = """
+    select p.poolId from pool p inner join user_in_pool u 
+    where p.appId = %s and 
+      p.size = %s and 
+      p.filled = false and 
+      u.userId <> %s and 
+      u.poolId = p.poolId 
+    for update"""      
+    cursor.execute(sql, (appId, size, userId))
+    results = cursor.fetchone()  
+    if results == None:
+      return handle_new_pool(appId, userId, size, addr, db)  
+    else:
+      poolId = results[0]
+      return handle_join_unfilled_pool(poolId, appId, userId, size, addr, db)        
   except IntegrityError as e:
-      print ("Caught an IntegrityError:"+str(e))
-      return build_response(STATUS_INTERNAL_ERROR)
+    print ("Caught an IntegrityError:"+str(e))
+    return build_response(STATUS_INTERNAL_ERROR)
 
 def handle_new_pool(appId, userId, size, addr, db):
   threadName = threading.currentThread().name    
@@ -412,7 +487,6 @@ def handle_get_message_count(appId, userId, addr, db):
       return response
     else:
       messageCount = results[0] 
-      print(type(messageCount))
       print ("<{threadName}-{addr}> userId has {messageCount} messages for appId {appId} in db".format(**locals()))
       response = bytes([STATUS_COUNT_OK] + list(messageCount.to_bytes(2, byteorder="little"))) # todo OverflowError raised if num > 2 bytes
       return response
