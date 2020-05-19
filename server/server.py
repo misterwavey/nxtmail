@@ -200,21 +200,17 @@ def handle_get_pool(appId, userId, poolId, addr, db):
       p.filled=true and 
       p.poolId = %s"""    
     cursor.execute(sql, (appId, poolId))
-    resultNicks = cursor.fetchall()  
+    resultNicks = cursor.fetchall()  # TODO these are userIds not nicks - convert
     if not(resultNicks == None):
-      nickList = []
+      response = bytearray(1)
+      response[0] = STATUS_POOL_FILLED
+      response.extend(len(resultNicks).to_bytes(1, byteorder="little"))
       for i in resultNicks:
-        nickList.append(str(len(i[0])))
-        nickList.append(i[0])
-        print("nickList {nickList}".format(**locals()))
-      nickListStr = str(len(nickList))
-      print("nickListStr {nickListStr}".format(**locals()))
-      nickListStr = nickListStr.join(nickList)
-      print("nickListStr {nickListStr}".format(**locals()))
-      response = bytes([STATUS_POOL_FILLED] + list(nickListStr.encode()))
+        nick = i[0] # take string from tuple
+        response.extend(len(nick).to_bytes(1, byteorder="little")) # 1 byte len of nick
+        response.extend(nick.encode()) # nick to bytes
+      response = bytes(response)
       print ("B: user is in filled pool {poolId} with nicks {resultNicks}. response {response}".format(**locals()))
-      for i in response:
-        print(i)
       return response
   except IntegrityError as e:
     print ("Caught an IntegrityError:"+str(e))
