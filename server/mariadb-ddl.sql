@@ -66,24 +66,12 @@ size tinyint unsigned not null,
 filled boolean not null,
 created_unixtime_ms bigint unsigned not null,
 updated_unixtime_ms bigint unsigned not null,
-user1 varchar(23) not null,
-user2 varchar(23),
-user3 varchar(23),
-user4 varchar(23),
-user5 varchar(23),
-user6 varchar(23),
-user7 varchar(23),
-user8 varchar(23),
-user9 varchar(23),
-user10 varchar(23),
-user11 varchar(23),
-user12 varchar(23),
-user13 varchar(23),
-user14 varchar(23),
-user15 varchar(23),
-user16 varchar(23),
 primary key(poolId)
 );
 
 drop table user_in_pool;
 
+create table user_in_pool (
+poolId int unsigned not null, -- FK into pool?
+userId varchar(23) not null   -- FK into user?
+);
