@@ -193,15 +193,15 @@ def handle_get_pool(appId, userId, poolId, addr, db):
   # B is our user in a filled pool? return it if so
   try:
     sql = """
-    select u.userId from pool p right join user_in_pool u on u.poolId = p.poolId 
+    select u.nickname from user u where u.userid in (select u.userId from pool p right join user_in_pool u on u.poolId = p.poolId 
       where 
       p.appid=%s and 
       u.poolId = p.poolId and 
       p.filled=true and 
-      p.poolId = %s"""    
+      p.poolId = %s)"""    
     cursor.execute(sql, (appId, poolId))
     resultNicks = cursor.fetchall()  # TODO these are userIds not nicks - convert
-    if not(resultNicks == None):
+    if not(resultNicks == None) and not(len(resultNicks) == 0):
       response = bytearray(1)
       response[0] = STATUS_POOL_FILLED
       response.extend(len(resultNicks).to_bytes(1, byteorder="little"))
