@@ -50,10 +50,10 @@ MBOX_STATUS_UNREG_NICK  equ 102                         ;
 MBOX_STATUS_UNK_USERID  equ 103                         ;
 MBOX_STATUS_UNREG_USER  equ 104                         ;
 
-MBOX_STATUS_REGISTER_OK equ 201                         ;
-MBOX_STATUS_COUNT_OK    equ 202                         ;
-MBOX_STATUS_GET_MSG_OK  equ 203                         ;
-MBOX_STATUS_INV_MSG_ID  equ 204                         ;
+MBOX_STATUS_REGISTER_OK equ 51                         ;
+MBOX_STATUS_COUNT_OK    equ 52                         ;
+MBOX_STATUS_GET_MSG_OK  equ 53                         ;
+MBOX_STATUS_INV_MSG_ID  equ 54                         ;
 
 MBOX_CMD_REGISTER       equ 1                           ;
 MBOX_CMD_CHECK_REG_NICK equ 2                           ;
@@ -317,14 +317,14 @@ SendExit                call ClearCentre                ;
 ;
 ; zero pad the remainder of the msg
 ;
-TerminateOutMsg         ld hl, OUT_MESSAGE              ;  set trailing $0s after text for remainder of nick
-                        ld a, $09                       ;
+TerminateOutMsg         ld hl, OUT_MESSAGE              ;  set trailing $0s after text for remainder of msg
+                        ld a, $06                       ;
                         ld bc, 200                      ;
-                        cpir                            ;
+                        cpir                            ;    z set for match
                         jp nz,MsgNoSpaces               ;
-                        dec hl                          ; found a space so back up
-                        inc c                           ; including counter
-                        ld d,h                          ; copy remaining counter's worth of $0s over the rest of the nick
+                        dec hl                          ; found our token so back up
+                        ;inc c                           ; including counter
+                        ld d,h                          ; copy remaining counter's worth of $0s over the rest of the msg
                         ld e,l                          ;
                         inc de                          ;
                         ld (hl), 0                      ;
@@ -355,7 +355,7 @@ WipeOutMsg              ld hl, OUT_MESSAGE              ;   fill nick with space
                         ld d,h                          ;
                         ld e,l                          ;
                         inc de                          ;
-                        ld (hl), $09                    ;
+                        ld (hl), $06                    ;
                         ld bc, 199                      ;
                         ldir                            ;
                         ret                             ;
@@ -705,12 +705,15 @@ TerminateMsgId          ld hl, MSG_ID_BUF               ;  set trailing $0s afte
                         ret                             ;
 
 WipeMsgId               ld hl, MSG_ID_BUF               ; fill id with spaces (0s cause problems when printing to screen)
-                        ld d,h                          ;
-                        ld e,l                          ;
-                        inc de                          ;
-                        ld (hl), ' '                    ;
-                        ld bc, 4                        ;
-                        ldir                            ;
+                        ld (hl), ' '
+                        inc hl
+                        ld (hl), ' '
+                        inc hl
+                        ld (hl), ' '
+                        inc hl
+                        ld (hl), ' '
+                        inc hl
+                        ld (hl), ' '
                         ret                             ;
 
 BuildGetMsgRequest      ld (MBOX_CMD), a                ;
@@ -980,7 +983,7 @@ OFFLINE                 defb "offline"                  ;
 OFFLINE_LEN             equ $-OFFLINE                   ;
 OK                      defb "OK"                       ;
 OK_LEN                  equ $-OK                        ;
-OUT_MESSAGE             ds 200,$09                      ; gets printed so fill with tab (not 0s and not space because users use space)
+OUT_MESSAGE             ds 200,$06                      ; gets printed so fill with tab (not 0s and not space because users use space)
 PROMPT                  defb "> "                       ;
 PROMPT_LEN              equ $-PROMPT                    ;
 REG_PROMPT              defb "Enter your Next Mailbox Id (then enter)";
@@ -1020,7 +1023,7 @@ SSHIFT_TABLE_AZ         defb 00,'*','?',0,0,0,0,'^',0,'-','+','=','.',',',";",'\
 
 
 ; Raise an assembly-time error if the expression evaluates false
-                        zeusassert zeusver<=78, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
+                        zeusassert zeusver<=81, "Upgrade to Zeus v4.00 (TEST ONLY) or above, available at http://www.desdes.com/products/oldfiles/zeustest.exe";
 ; zeusprint               zeusver                         ;
 ; Generate a NEX file                                   ; Instruct the .NEX loader to write the file handle to this
                         ;        output_z80 "NxtMail.z80",$FF40, Main ;
