@@ -323,7 +323,6 @@ TerminateOutMsg         ld hl, OUT_MESSAGE              ;  set trailing $0s afte
                         cpir                            ;    z set for match
                         jp nz,MsgNoSpaces               ;
                         dec hl                          ; found our token so back up
-                        ;inc c                           ; including counter
                         ld d,h                          ; copy remaining counter's worth of $0s over the rest of the msg
                         ld e,l                          ;
                         inc de                          ;
@@ -340,7 +339,6 @@ TerminateTargetNick     ld hl, TARGET_NICK_BUF          ;  set trailing $0s afte
                         cpir                            ;
                         ret nz                          ; z set if found a match, so we're done
                         dec hl                          ; found a space so back up
-                        inc c                           ; including counter
                         ld d,h                          ; copy remaining counter's worth of $0s over the rest of the nick
                         ld e,l                          ;
                         inc de                          ;
@@ -696,7 +694,6 @@ TerminateMsgId          ld hl, MSG_ID_BUF               ;  set trailing $0s afte
                         cpir                            ;
                         ret nz                          ; z only set if match found, so return if we've nothing to terminate
                         dec hl                          ; found a space so back up
-                        inc c                           ; including counter
                         ld d,h                          ; copy remaining counter's worth of $0s over the rest of the msgid
                         ld e,l                          ;
                         inc de                          ;
